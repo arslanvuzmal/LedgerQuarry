@@ -1,0 +1,50 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+5 0 obj
+<< /Length 510 >>
+stream
+BT
+/F1 10 Tf
+13 TL
+50 790 Td
+(Harbour Medical Supply Ltd) '
+(9 Quay Street, Dublin 2) '
+(accounts@harbourmedical.example) '
+() '
+(CREDIT NOTE  CN-77) '
+(Date: 2026-10-07) '
+(Credit to: Lakeside Dental) '
+() '
+(Description              Qty   Unit price   Line total) '
+(Returned gloves, box      -1       42.50        -42.50) '
+() '
+(Subtotal                                       -42.50) '
+(VAT 27%                                        -11.48) '
+(Total \(EUR\)                                    -53.98) '
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000309 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+870
+%%EOF

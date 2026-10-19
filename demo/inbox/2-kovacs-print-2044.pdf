@@ -1,0 +1,52 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+5 0 obj
+<< /Length 617 >>
+stream
+BT
+/F1 10 Tf
+13 TL
+50 790 Td
+(Kovacs Print Bt.) '
+(4 Csengery utca, 1067 Budapest) '
+(invoices@kovacsprint.example) '
+() '
+(INVOICE  2044) '
+(Invoice date: 2026-10-05      Due date: 2026-10-20) '
+(Bill to: Lakeside Dental) '
+() '
+(Description              Qty   Unit price   Line total) '
+(Appointment cards       1000        0.12        120.00) '
+(Window vinyl               1       80.00         80.00) '
+() '
+(Subtotal                                       210.00) '
+(VAT 27%                                         56.70) '
+(Total \(EUR\)                                    266.70) '
+(Payment terms: 15 days) '
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000309 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+977
+%%EOF

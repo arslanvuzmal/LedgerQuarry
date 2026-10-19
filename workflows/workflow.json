@@ -56,7 +56,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const items = $input.all();\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const binaryKeys = Object.keys(item.binary || {});\n  \n  // Check if originated from Drive (has fileId) vs Gmail (has attachment)\n  item.json.origin = item.json.id && !item.json.messageId ? 'drive' : 'gmail';\n  item.json.drive_file_id = item.json.id || null;\n\n  if (binaryKeys.length === 0) {\n    item.json.fileType = 'unknown';\n    item.json.has_attachment = false;\n    continue;\n  }\n  item.json.has_attachment = true;\n  \n  const attachmentKey = binaryKeys.find(k => {\n    const mime = (item.binary[k].mimeType || '').toLowerCase();\n    const name = (item.binary[k].fileName || '').toLowerCase();\n    return mime.includes('pdf') || mime.includes('jpeg') || mime.includes('jpg') || mime.includes('png') ||\n           name.endsWith('.pdf') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png');\n  }) || binaryKeys[0];\n\n  item.json.attachment_key = attachmentKey;\n  item.json.pdf_filename = item.binary[attachmentKey].fileName;\n  item.json.pdf_mime_type = item.binary[attachmentKey].mimeType;\n\n  try {\n    const buffer = await this.helpers.getBinaryDataBuffer(i, attachmentKey);\n    if (buffer && buffer.length >= 4) {\n      const magic = buffer.readUInt32BE(0);\n      if (magic === 0x25504446) {\n        item.json.fileType = 'pdf';\n      } else if (magic === 0x89504E47) {\n        item.json.fileType = 'png';\n      } else if ((magic >> 8) === 0xFFD8FF || magic === 0xFFD8FFE0 || magic === 0xFFD8FFE1) {\n        item.json.fileType = 'jpeg';\n      } else {\n        const mime = (item.binary[attachmentKey].mimeType || '').toLowerCase();\n        if (mime.includes('pdf')) {\n          item.json.fileType = 'pdf';\n        } else if (mime.includes('jpeg') || mime.includes('jpg')) {\n          item.json.fileType = 'jpeg';\n        } else if (mime.includes('png')) {\n          item.json.fileType = 'png';\n        } else {\n          item.json.fileType = 'unknown';\n        }\n      }\n    } else {\n      item.json.fileType = 'unknown';\n    }\n  } catch (e) {\n    item.json.fileType = 'unknown';\n    item.json.detection_error = e.message;\n  }\n\n  let email = null;\n  if (item.json.from) {\n    if (typeof item.json.from === 'string') {\n      const match = item.json.from.match(/<([^>]+)>/);\n      email = match ? match[1] : item.json.from;\n    } else if (item.json.from.value && item.json.from.value[0]) {\n      email = item.json.from.value[0].address;\n    } else if (item.json.from.text) {\n      const match = item.json.from.text.match(/<([^>]+)>/);\n      email = match ? match[1] : item.json.from.text;\n    }\n  }\n  item.json.sender_email = email || 'drive-system@example.com';\n  \n  item.binary = {\n    attachment: item.binary[attachmentKey]\n  };\n}\nreturn items;"
+        "jsCode": "const items = $input.all();\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  // When this file entered the pipeline; the audit log measures processing time from here.\n  item.json.received_at = new Date().toISOString();\n  const binaryKeys = Object.keys(item.binary || {});\n  \n  // Check if originated from Drive (has fileId) vs Gmail (has attachment)\n  item.json.origin = item.json.id && !item.json.messageId ? 'drive' : 'gmail';\n  item.json.drive_file_id = item.json.id || null;\n\n  if (binaryKeys.length === 0) {\n    item.json.fileType = 'unknown';\n    item.json.has_attachment = false;\n    continue;\n  }\n  item.json.has_attachment = true;\n  \n  const attachmentKey = binaryKeys.find(k => {\n    const mime = (item.binary[k].mimeType || '').toLowerCase();\n    const name = (item.binary[k].fileName || '').toLowerCase();\n    return mime.includes('pdf') || mime.includes('jpeg') || mime.includes('jpg') || mime.includes('png') ||\n           name.endsWith('.pdf') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png');\n  }) || binaryKeys[0];\n\n  item.json.attachment_key = attachmentKey;\n  item.json.pdf_filename = item.binary[attachmentKey].fileName;\n  item.json.pdf_mime_type = item.binary[attachmentKey].mimeType;\n\n  try {\n    const buffer = await this.helpers.getBinaryDataBuffer(i, attachmentKey);\n    if (buffer && buffer.length >= 4) {\n      const magic = buffer.readUInt32BE(0);\n      if (magic === 0x25504446) {\n        item.json.fileType = 'pdf';\n      } else if (magic === 0x89504E47) {\n        item.json.fileType = 'png';\n      } else if ((magic >> 8) === 0xFFD8FF || magic === 0xFFD8FFE0 || magic === 0xFFD8FFE1) {\n        item.json.fileType = 'jpeg';\n      } else {\n        const mime = (item.binary[attachmentKey].mimeType || '').toLowerCase();\n        if (mime.includes('pdf')) {\n          item.json.fileType = 'pdf';\n        } else if (mime.includes('jpeg') || mime.includes('jpg')) {\n          item.json.fileType = 'jpeg';\n        } else if (mime.includes('png')) {\n          item.json.fileType = 'png';\n        } else {\n          item.json.fileType = 'unknown';\n        }\n      }\n    } else {\n      item.json.fileType = 'unknown';\n    }\n  } catch (e) {\n    item.json.fileType = 'unknown';\n    item.json.detection_error = e.message;\n  }\n\n  let email = null;\n  if (item.json.from) {\n    if (typeof item.json.from === 'string') {\n      const match = item.json.from.match(/<([^>]+)>/);\n      email = match ? match[1] : item.json.from;\n    } else if (item.json.from.value && item.json.from.value[0]) {\n      email = item.json.from.value[0].address;\n    } else if (item.json.from.text) {\n      const match = item.json.from.text.match(/<([^>]+)>/);\n      email = match ? match[1] : item.json.from.text;\n    }\n  }\n  item.json.sender_email = email || 'drive-system@example.com';\n  \n  item.binary = {\n    attachment: item.binary[attachmentKey]\n  };\n}\nreturn items;"
       },
       "id": "detect-file-type-id",
       "name": "detectFileType",
@@ -171,7 +171,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const systemPrompt = `You are a specialized invoice data extraction engine. You will receive either raw text or an image of an invoice. Extract structured data and return ONLY valid JSON with no markdown formatting, no explanations, no preamble.\n\nReturn this exact JSON structure with all fields present:\n\n{\n  \"invoice_number\": {\"value\": null, \"confidence\": 0},\n  \"invoice_date\": {\"value\": null, \"confidence\": 0},\n  \"due_date\": {\"value\": null, \"confidence\": 0},\n  \"vendor\": {\n    \"name\": {\"value\": null, \"confidence\": 0},\n    \"address\": {\"value\": null, \"confidence\": 0},\n    \"email\": {\"value\": null, \"confidence\": 0}\n  },\n  \"client\": {\n    \"name\": {\"value\": null, \"confidence\": 0}\n  },\n  \"line_items\": [\n    {\n      \"description\": {\"value\": null, \"confidence\": 0},\n      \"quantity\": {\"value\": null, \"confidence\": 0},\n      \"unit_price\": {\"value\": null, \"confidence\": 0},\n      \"line_total\": {\"value\": null, \"confidence\": 0}\n    }\n  ],\n  \"currency\": {\"value\": null, \"confidence\": 0},\n  \"subtotal\": {\"value\": null, \"confidence\": 0},\n  \"tax_amount\": {\"value\": null, \"confidence\": 0},\n  \"total\": {\"value\": null, \"confidence\": 0},\n  \"payment_terms\": {\"value\": null, \"confidence\": 0}\n}\n\nRules:\n1. All dates must be YYYY-MM-DD format\n2. All monetary values must be numeric only (no $, no commas)\n3. If a field is not present, use {\"value\": null, \"confidence\": 100}\n4. line_items must be an array (even if single item)\n\nAdditional Rule for Images: If reading from an image, infer missing context visually (e.g., logos for vendor name, layout for line items). If a field is completely illegible, use {\"value\": null, \"confidence\": 0}.`;\n\nconst path = item.json.path || 'text';\nlet content = [];\n\nif (path === 'text') {\n  let extractedText = item.json.text || '';\n  if (extractedText.length > 10000) {\n    extractedText = extractedText.substring(0, 10000) + '\\n... [TRUNCATED DUE TO 10,000 CHAR LIMIT]';\n  }\n  content = [\n    {\n      type: \"text\",\n      text: `${systemPrompt}\\n\\nINVOICE TEXT:\\n${extractedText}`\n    }\n  ];\n} else if (path === 'vision') {\n  const base64String = item.json.base64String || '';\n  const mimeType = item.json.mimeType || 'image/jpeg';\n  content = [\n    {\n      type: \"text\",\n      text: systemPrompt\n    },\n    {\n      type: \"image\",\n      source: {\n        type: \"base64\",\n        media_type: mimeType,\n        data: base64String\n      }\n    }\n  ];\n}\n\nitem.json.claude_payload = {\n  model: 'claude-3-5-sonnet-20241022',\n  max_tokens: 2000,\n  messages: [\n    {\n      role: 'user',\n      content: content\n    }\n  ]\n};\nreturn item;"
+        "jsCode": "const systemPrompt = `You are a specialized invoice data extraction engine. You will receive either raw text or an image of an invoice. Extract structured data and return ONLY valid JSON with no markdown formatting, no explanations, no preamble.\n\nReturn this exact JSON structure with all fields present:\n\n{\n  \"invoice_number\": {\"value\": null, \"confidence\": 0},\n  \"invoice_date\": {\"value\": null, \"confidence\": 0},\n  \"due_date\": {\"value\": null, \"confidence\": 0},\n  \"vendor\": {\n    \"name\": {\"value\": null, \"confidence\": 0},\n    \"address\": {\"value\": null, \"confidence\": 0},\n    \"email\": {\"value\": null, \"confidence\": 0}\n  },\n  \"client\": {\n    \"name\": {\"value\": null, \"confidence\": 0}\n  },\n  \"line_items\": [\n    {\n      \"description\": {\"value\": null, \"confidence\": 0},\n      \"quantity\": {\"value\": null, \"confidence\": 0},\n      \"unit_price\": {\"value\": null, \"confidence\": 0},\n      \"line_total\": {\"value\": null, \"confidence\": 0}\n    }\n  ],\n  \"currency\": {\"value\": null, \"confidence\": 0},\n  \"subtotal\": {\"value\": null, \"confidence\": 0},\n  \"tax_amount\": {\"value\": null, \"confidence\": 0},\n  \"total\": {\"value\": null, \"confidence\": 0},\n  \"payment_terms\": {\"value\": null, \"confidence\": 0}\n}\n\nRules:\n1. All dates must be YYYY-MM-DD format\n2. All monetary values must be numeric only (no $, no commas)\n3. If a field is not present, use {\"value\": null, \"confidence\": 100}\n4. line_items must be an array (even if single item)\n\nAdditional Rule for Images: If reading from an image, infer missing context visually (e.g., logos for vendor name, layout for line items). If a field is completely illegible, use {\"value\": null, \"confidence\": 0}.`;\n\nconst path = item.json.path || 'text';\nlet content = [];\n\nif (path === 'text') {\n  let extractedText = item.json.text || '';\n  if (extractedText.length > 10000) {\n    extractedText = extractedText.substring(0, 10000) + '\\n... [TRUNCATED DUE TO 10,000 CHAR LIMIT]';\n  }\n  content = [\n    {\n      type: \"text\",\n      text: `${systemPrompt}\\n\\nINVOICE TEXT:\\n${extractedText}`\n    }\n  ];\n} else if (path === 'vision') {\n  const base64String = item.json.base64String || '';\n  const mimeType = item.json.mimeType || 'image/jpeg';\n  content = [\n    {\n      type: \"text\",\n      text: systemPrompt\n    },\n    {\n      type: \"image\",\n      source: {\n        type: \"base64\",\n        media_type: mimeType,\n        data: base64String\n      }\n    }\n  ];\n}\n\nitem.json.claude_payload = {\n  // claude-3-5-sonnet-20241022 is retired. Current Sonnet; thinking is on by default and counts\n  // towards max_tokens, so 2000 could cut the JSON off.\n  model: 'claude-sonnet-5-5',\n  max_tokens: 16000,\n  // If the model declines a document, the API retries it on a fallback model in the same call.\n  fallbacks: 'default',\n  messages: [\n    {\n      role: 'user',\n      content: content\n    }\n  ]\n};\nreturn item;"
       },
       "id": "prepare-claude-multimodal-payload-id",
       "name": "Prepare Claude Multimodal Payload",
@@ -202,6 +202,10 @@
             {
               "name": "x-api-key",
               "value": "={{$credentials.claudeApiKey}}"
+            },
+            {
+              "name": "anthropic-beta",
+              "value": "server-side-fallback-2026-07-01"
             }
           ]
         },
@@ -236,7 +240,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "let extracted = {\n  invoice_number: null,\n  invoice_date: null,\n  due_date: null,\n  vendor_name: null,\n  vendor_address: null,\n  vendor_email: null,\n  client_name: null,\n  subtotal: null,\n  tax_amount: null,\n  total: null,\n  currency: null,\n  raw_response: null\n};\n\nif (item.json.error || !item.json.content || !item.json.content[0] || !item.json.content[0].text) {\n  extracted.raw_response = item.json.error ? JSON.stringify(item.json.error) : 'API_FAILED_OR_INVALID_RESPONSE';\n  item.json.extracted_data = extracted;\n  item.json.extracted_json = null;\n  item.json.success = false;\n  return item;\n}\n\nconst rawText = item.json.content[0].text;\nextracted.raw_response = rawText;\n\ntry {\n  let jsonStr = rawText.trim();\n  if (jsonStr.includes('```json')) {\n    jsonStr = jsonStr.split('```json')[1].split('```')[0].trim();\n  } else if (jsonStr.includes('```')) {\n    jsonStr = jsonStr.split('```')[1].split('```')[0].trim();\n  }\n\n  const data = JSON.parse(jsonStr);\n\n  extracted.invoice_number = data.invoice_number?.value ?? null;\n  extracted.invoice_date = data.invoice_date?.value ?? null;\n  extracted.due_date = data.due_date?.value ?? null;\n  extracted.vendor_name = data.vendor?.name?.value ?? null;\n  extracted.vendor_address = data.vendor?.address?.value ?? null;\n  extracted.vendor_email = data.vendor?.email?.value ?? null;\n  extracted.client_name = data.client?.name?.value ?? null;\n  extracted.subtotal = data.subtotal?.value ?? null;\n  extracted.tax_amount = data.tax_amount?.value ?? null;\n  extracted.total = data.total?.value ?? null;\n  extracted.currency = data.currency?.value ?? null;\n  \n  item.json.extracted_data = extracted;\n  item.json.extracted_json = data;\n  item.json.success = true;\n} catch (err) {\n  console.error('Failed to parse Claude response JSON', err);\n  extracted.raw_response = 'PARSE_FAILED: ' + rawText;\n  item.json.extracted_data = extracted;\n  item.json.extracted_json = null;\n  item.json.success = false;\n}\nreturn item;"
+        "jsCode": "let extracted = {\n  invoice_number: null,\n  invoice_date: null,\n  due_date: null,\n  vendor_name: null,\n  vendor_address: null,\n  vendor_email: null,\n  client_name: null,\n  subtotal: null,\n  tax_amount: null,\n  total: null,\n  currency: null,\n  raw_response: null\n};\n\n// Current models can return a thinking block before the answer; use the first text block.\nconst textBlock = Array.isArray(item.json.content) ? item.json.content.find((b) => b && b.type === 'text' && b.text) : null;\n\nif (item.json.error || item.json.stop_reason === 'refusal' || !textBlock) {\n  extracted.raw_response = item.json.error ? JSON.stringify(item.json.error) : item.json.stop_reason === 'refusal' ? 'REFUSED' : 'API_FAILED_OR_INVALID_RESPONSE';\n  item.json.extracted_data = extracted;\n  item.json.extracted_json = null;\n  item.json.success = false;\n  return item;\n}\n\nconst rawText = textBlock.text;\nextracted.raw_response = rawText;\n\ntry {\n  let jsonStr = rawText.trim();\n  if (jsonStr.includes('```json')) {\n    jsonStr = jsonStr.split('```json')[1].split('```')[0].trim();\n  } else if (jsonStr.includes('```')) {\n    jsonStr = jsonStr.split('```')[1].split('```')[0].trim();\n  }\n\n  const data = JSON.parse(jsonStr);\n\n  extracted.invoice_number = data.invoice_number?.value ?? null;\n  extracted.invoice_date = data.invoice_date?.value ?? null;\n  extracted.due_date = data.due_date?.value ?? null;\n  extracted.vendor_name = data.vendor?.name?.value ?? null;\n  extracted.vendor_address = data.vendor?.address?.value ?? null;\n  extracted.vendor_email = data.vendor?.email?.value ?? null;\n  extracted.client_name = data.client?.name?.value ?? null;\n  extracted.subtotal = data.subtotal?.value ?? null;\n  extracted.tax_amount = data.tax_amount?.value ?? null;\n  extracted.total = data.total?.value ?? null;\n  extracted.currency = data.currency?.value ?? null;\n  \n  item.json.extracted_data = extracted;\n  item.json.extracted_json = data;\n  item.json.success = true;\n} catch (err) {\n  console.error('Failed to parse Claude response JSON', err);\n  extracted.raw_response = 'PARSE_FAILED: ' + rawText;\n  item.json.extracted_data = extracted;\n  item.json.extracted_json = null;\n  item.json.success = false;\n}\nreturn item;"
       },
       "id": "parse-claude-response-id",
       "name": "Parse Claude Response",
@@ -250,7 +254,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const item = $input.item;\nitem.json.mathDiscrepancies = [];\nitem.json.flags = item.json.flags || [];\n\nif (item.json.success && item.json.extracted_json) {\n  const data = item.json.extracted_json;\n\n  // Check 1: Line Items Sum vs Subtotal\n  if (data.line_items && Array.isArray(data.line_items) && data.subtotal && data.subtotal.value !== null) {\n    let lineItemsSum = 0;\n    let hasLineItems = false;\n    for (const line of data.line_items) {\n      if (line.line_total && line.line_total.value !== null) {\n        const val = parseFloat(line.line_total.value);\n        if (!isNaN(val)) {\n          lineItemsSum += val;\n          hasLineItems = true;\n        }\n      }\n    }\n    \n    if (hasLineItems) {\n      const subtotalVal = parseFloat(data.subtotal.value);\n      if (!isNaN(subtotalVal)) {\n        const diff = Math.abs(lineItemsSum - subtotalVal);\n        if (diff > 0.02) {\n          item.json.mathDiscrepancies.push(`Line items sum (${lineItemsSum.toFixed(2)}) \u2260 subtotal (${subtotalVal.toFixed(2)})`);\n          item.json.flags.push(\"LINE_ITEM_SUM_MISMATCH\");\n        }\n      }\n    }\n  }\n\n  // Check 2: Grand Total Match\n  if (data.subtotal && data.subtotal.value !== null && data.total && data.total.value !== null) {\n    const subtotal = parseFloat(data.subtotal.value);\n    const total = parseFloat(data.total.value);\n    const tax = data.tax_amount && data.tax_amount.value !== null ? parseFloat(data.tax_amount.value) : 0;\n    const discount = data.discount_amount && data.discount_amount.value !== null ? parseFloat(data.discount_amount.value) : 0;\n    \n    if (!isNaN(subtotal) && !isNaN(total)) {\n      const expectedTotal = subtotal + tax - discount;\n      const diff = Math.abs(expectedTotal - total);\n      if (diff > 0.02) {\n        item.json.mathDiscrepancies.push(`Calculated total (${expectedTotal.toFixed(2)}) \u2260 stated total (${total.toFixed(2)})`);\n        item.json.flags.push(\"TOTAL_MISMATCH\");\n      }\n    }\n  }\n}\n\nreturn item;"
+        "jsCode": "const item = $input.item;\nitem.json.mathDiscrepancies = [];\nitem.json.flags = item.json.flags || [];\n\nif (item.json.success && item.json.extracted_json) {\n  const data = item.json.extracted_json;\n\n  // Check 1: Line Items Sum vs Subtotal\n  if (data.line_items && Array.isArray(data.line_items) && data.subtotal && data.subtotal.value !== null) {\n    let lineItemsSum = 0;\n    let hasLineItems = false;\n    for (const line of data.line_items) {\n      if (line.line_total && line.line_total.value !== null) {\n        const val = parseFloat(line.line_total.value);\n        if (!isNaN(val)) {\n          lineItemsSum += val;\n          hasLineItems = true;\n        }\n      }\n    }\n    \n    if (hasLineItems) {\n      const subtotalVal = parseFloat(data.subtotal.value);\n      if (!isNaN(subtotalVal)) {\n        const diff = Math.abs(lineItemsSum - subtotalVal);\n        if (diff > 0.02) {\n          item.json.mathDiscrepancies.push(`Line items sum (${lineItemsSum.toFixed(2)}) ≠ subtotal (${subtotalVal.toFixed(2)})`);\n          item.json.flags.push(\"LINE_ITEM_SUM_MISMATCH\");\n        }\n      }\n    }\n  }\n\n  // Check 2: Grand Total Match\n  if (data.subtotal && data.subtotal.value !== null && data.total && data.total.value !== null) {\n    const subtotal = parseFloat(data.subtotal.value);\n    const total = parseFloat(data.total.value);\n    const tax = data.tax_amount && data.tax_amount.value !== null ? parseFloat(data.tax_amount.value) : 0;\n    const discount = data.discount_amount && data.discount_amount.value !== null ? parseFloat(data.discount_amount.value) : 0;\n    \n    if (!isNaN(subtotal) && !isNaN(total)) {\n      const expectedTotal = subtotal + tax - discount;\n      const diff = Math.abs(expectedTotal - total);\n      if (diff > 0.02) {\n        item.json.mathDiscrepancies.push(`Calculated total (${expectedTotal.toFixed(2)}) ≠ stated total (${total.toFixed(2)})`);\n        item.json.flags.push(\"TOTAL_MISMATCH\");\n      }\n    }\n  }\n}\n\nreturn item;"
       },
       "id": "validate-math-id",
       "name": "validateMath",
@@ -350,7 +354,8 @@
       "settings": {
         "onError": "continueRegularOutput",
         "alwaysOutputData": true
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -358,7 +363,7 @@
           "string": [
             {
               "value1": "={{ $json[\"Invoice Number\"] || $json.invoice_number }}",
-              "operation": "notEmpty"
+              "operation": "isNotEmpty"
             }
           ]
         }
@@ -375,7 +380,7 @@
     {
       "parameters": {
         "sendTo": "admin@example.com",
-        "subject": "={{ '\ud83d\udea8 Duplicate Invoice Alert \u2014 ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown Vendor') + ' \u00b7 Invoice #' + ($('determineStatus').item.json.extracted_data?.invoice_number || 'N/A') }}",
+        "subject": "={{ '🚨 Duplicate Invoice Alert — ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown Vendor') + ' · Invoice #' + ($('determineStatus').item.json.extracted_data?.invoice_number || 'N/A') }}",
         "html": "={{ 'A duplicate invoice was detected and blocked from entry.<br><br><b>Vendor:</b> ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + '<br><b>Invoice #:</b> ' + ($('determineStatus').item.json.extracted_data?.invoice_number || 'N/A') + '<br><b>Total:</b> ' + ($('determineStatus').item.json.extracted_data?.total || '0.00') + '<br><b>Action:</b> Moving file to `/Invoices/Duplicates/` and aborting Append.' }}"
       },
       "id": "duplicate-alert-id",
@@ -423,7 +428,7 @@
           "string": [
             {
               "value1": "={{ $json.id }}",
-              "operation": "notEmpty"
+              "operation": "isNotEmpty"
             }
           ]
         }
@@ -458,12 +463,12 @@
     },
     {
       "parameters": {
-        "mode": "combine",
-        "combinationMode": "mergeByIndex"
+        "mode": "runOnceForEachItem",
+        "jsCode": "// The folder found or created for this invoice, plus the invoice's own file from\n// detectFileType (sheet nodes drop binary data). Replaces a Merge by position, which\n// paired folders with the wrong files once a duplicate or failure left the branch.\nconst source = $('detectFileType').item;\nreturn { json: { ...$json }, binary: source.binary };"
       },
       "id": "merge-dup-folder-id-id",
       "name": "Merge Dup Folder ID",
-      "type": "n8n-nodes-base.merge",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         4050,
@@ -614,7 +619,7 @@
     {
       "parameters": {
         "sendTo": "stakeholder@example.com",
-        "subject": "={{ '\u2705 Invoice processed \u2014 ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + ' \u00b7 ' + ($('determineStatus').item.json.extracted_data?.currency || '$') + ($('determineStatus').item.json.extracted_data?.total || '0.00') }}",
+        "subject": "={{ '✅ Invoice processed — ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + ' · ' + ($('determineStatus').item.json.extracted_data?.currency || '$') + ($('determineStatus').item.json.extracted_data?.total || '0.00') }}",
         "html": "={{ 'Invoice #' + ($('determineStatus').item.json.extracted_data?.invoice_number || 'N/A') + ' from ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + ' has been automatically extracted and approved.<br><br><b>Total:</b> ' + ($('determineStatus').item.json.extracted_data?.currency || '$') + ($('determineStatus').item.json.extracted_data?.total || '0.00') + '<br><b>Due Date:</b> ' + ($('determineStatus').item.json.extracted_data?.due_date || 'N/A') + '<br><br><a href=\"https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit\">View in Google Sheets</a>' }}"
       },
       "id": "success-notification-id",
@@ -638,7 +643,7 @@
     {
       "parameters": {
         "sendTo": "stakeholder@example.com",
-        "subject": "={{ '\u26a0\ufe0f Invoice needs review \u2014 ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + ' \u00b7 ' + ($('determineStatus').item.json.extracted_data?.currency || '$') + ($('determineStatus').item.json.extracted_data?.total || '0.00') }}",
+        "subject": "={{ '⚠️ Invoice needs review — ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + ' · ' + ($('determineStatus').item.json.extracted_data?.currency || '$') + ($('determineStatus').item.json.extracted_data?.total || '0.00') }}",
         "html": "={{ 'Invoice #' + ($('determineStatus').item.json.extracted_data?.invoice_number || 'N/A') + ' from ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + ' requires your attention.<br><br><b>Status:</b> <span style=\"color:' + ($('determineStatus').item.json.statusColor || '#EA4335') + ';font-weight:bold;\">' + $('determineStatus').item.json.status + '</span><br><br><b>Issues Found:</b><br>- Math Discrepancies: ' + ($('determineStatus').item.json.mathDiscrepancies && $('determineStatus').item.json.mathDiscrepancies.length > 0 ? $('determineStatus').item.json.mathDiscrepancies.join(', ') : 'None') + '<br>- Low Confidence Fields: ' + ($('determineStatus').item.json.lowConfidenceFields && $('determineStatus').item.json.lowConfidenceFields.length > 0 ? $('determineStatus').item.json.lowConfidenceFields.map(f => f.field + ' (' + f.confidence + '%)').join(', ') : 'None') + '<br>- Flags: ' + ($('determineStatus').item.json.flags && $('determineStatus').item.json.flags.length > 0 ? $('determineStatus').item.json.flags.join(', ') : 'None') + '<br><br><a href=\"https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit\">Review in Google Sheets</a>' }}"
       },
       "id": "review-notification-id",
@@ -689,7 +694,7 @@
           "string": [
             {
               "value1": "={{ $json.id }}",
-              "operation": "notEmpty"
+              "operation": "isNotEmpty"
             }
           ]
         }
@@ -730,12 +735,12 @@
     },
     {
       "parameters": {
-        "mode": "combine",
-        "combinationMode": "mergeByIndex"
+        "mode": "runOnceForEachItem",
+        "jsCode": "// The folder found or created for this invoice, plus the invoice's own file from\n// detectFileType (sheet nodes drop binary data). Replaces a Merge by position, which\n// paired folders with the wrong files once a duplicate or failure left the branch.\nconst source = $('detectFileType').item;\nreturn { json: { ...$json }, binary: source.binary };"
       },
       "id": "merge-folder-id-id",
       "name": "Merge Folder ID",
-      "type": "n8n-nodes-base.merge",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         4450,
@@ -832,7 +837,7 @@
             "Timestamp": "={{ new Date().toISOString() }}",
             "Filename": "={{ $('detectFileType').item.json.pdf_filename || 'N/A' }}",
             "Final Status": "={{ $('determineStatus').item.json.status }}",
-            "Processing Duration": "={{ (new Date().getTime() - new Date($execution.startedAt).getTime()) / 1000 + ' seconds' }}",
+            "Processing Duration": "={{ ((Date.now() - new Date($('detectFileType').item.json.received_at).getTime()) / 1000).toFixed(2) + ' seconds' }}",
             "Tokens Used": "={{ $('Claude API Call').item.json.usage?.output_tokens ? ($('Claude API Call').item.json.usage.input_tokens + $('Claude API Call').item.json.usage.output_tokens) : 0 }}"
           }
         },
@@ -858,7 +863,7 @@
         "conditions": {
           "boolean": [
             {
-              "value1": "={{ $('determineStatus').item.json.success }}",
+              "value1": "={{ $json.success }}",
               "value2": false
             }
           ]
@@ -915,7 +920,7 @@
     {
       "parameters": {
         "sendTo": "admin@example.com",
-        "subject": "={{ '\ud83d\udd25 CRITICAL PIPELINE ERROR \u2014 ' + ($('detectFileType').item.json.pdf_filename || 'Unknown File') }}",
+        "subject": "={{ '🔥 CRITICAL PIPELINE ERROR — ' + ($('detectFileType').item.json.pdf_filename || 'Unknown File') }}",
         "html": "={{ 'An invoice has failed extraction after all automatic retry attempts.<br><br><b>File:</b> ' + ($('detectFileType').item.json.pdf_filename || 'Unknown') + '<br><b>Stage:</b> Claude API Extraction / Parsing<br><b>Error Message:</b> ' + ($('Parse Claude Response').item.json.extracted_data?.raw_response || 'API Connection Failed') }}"
       },
       "id": "admin-alert-email-id",
@@ -962,16 +967,6 @@
         [
           {
             "node": "Switch Routing",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Merge Folder ID",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Merge Dup Folder ID",
             "type": "main",
             "index": 0
           }
@@ -1193,7 +1188,7 @@
           {
             "node": "Merge Dup Folder ID",
             "type": "main",
-            "index": 1
+            "index": 0
           }
         ],
         [
@@ -1211,7 +1206,7 @@
           {
             "node": "Merge Dup Folder ID",
             "type": "main",
-            "index": 1
+            "index": 0
           }
         ]
       ]
@@ -1306,7 +1301,7 @@
           {
             "node": "Merge Folder ID",
             "type": "main",
-            "index": 1
+            "index": 0
           }
         ],
         [
@@ -1324,7 +1319,7 @@
           {
             "node": "Merge Folder ID",
             "type": "main",
-            "index": 1
+            "index": 0
           }
         ]
       ]
@@ -1382,14 +1377,14 @@
     },
     "IF Success Check": {
       "main": [
-        [],
         [
           {
             "node": "Error Log",
             "type": "main",
             "index": 0
           }
-        ]
+        ],
+        []
       ]
     },
     "Error Log": {

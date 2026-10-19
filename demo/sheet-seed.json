@@ -1,0 +1,15 @@
+{
+  "_about": "Demo mode only: rows already in the ledger sheet from an earlier run. 'Check Duplicate' looks invoices up here the way the real node looks them up in Google Sheets (vendor, invoice number and total must all match).",
+  "rows": [
+    {
+      "Timestamp": "2026-09-04T08:12:31.000Z",
+      "Source Email": "billing@northwind.example",
+      "Attachment Filename": "northwind-INV-1001.pdf",
+      "Invoice Number": "INV-1001",
+      "Invoice Date": "2026-09-03",
+      "Vendor Name": "Northwind Office Supplies Kft.",
+      "Total": 139.7,
+      "Status": "AUTO_APPROVED"
+    }
+  ]
+}
