@@ -66,12 +66,13 @@ const read = {
   name: 'Read sample invoices',
   type: 'n8n-nodes-base.readWriteFile',
   typeVersion: 1,
-  position: [gmailTrigger.position[0] + 220, gmailTrigger.position[1] + 100],
+  position: [gmailTrigger.position[0] - 20, byName('detectFileType').position[1]],
   parameters: { fileSelector: '/demo/inbox/*.pdf', options: {} },
   notes: 'Demo mode: the sample PDFs in demo/inbox.',
   notesInFlow: true,
 };
-start.position = [gmailTrigger.position[0], gmailTrigger.position[1] + 100];
+// Left of detectFileType, clear of the other nodes.
+start.position = [gmailTrigger.position[0] - 240, byName('detectFileType').position[1]];
 wf.nodes = wf.nodes.filter((n) => n.name !== 'Gmail Trigger' && n.name !== 'Google Drive Trigger');
 wf.nodes.push(start, read);
 const toDetect = wf.connections['Gmail Trigger'].main;
@@ -166,7 +167,7 @@ function csvWriter(after, file, dx, dy) {
   outs[0].push({ node: convert.name, type: 'main', index: 0 });
   wf.connections[convert.name] = { main: [[{ node: write.name, type: 'main', index: 0 }]] };
 }
-csvWriter('Google Sheets Append', 'ledger.csv', 0, -220);
+csvWriter('Google Sheets Append', 'ledger.csv', 0, 300);
 csvWriter('Audit Log', 'audit-log.csv', 0, 180);
 
 wf.name = 'LedgerQuarry (demo mode)';

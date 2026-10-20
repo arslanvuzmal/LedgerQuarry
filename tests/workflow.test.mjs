@@ -208,3 +208,26 @@ test('the audit log measures processing time from a value that exists', () => {
   assert.doesNotMatch(col, /\$execution\.startedAt/);
   assert.match(nodeNamed('detectFileType').parameters.jsCode, /received_at/);
 });
+
+test('a scanned PDF keeps its file and goes to Claude as a PDF document', async () => {
+  const wf = workflow();
+  assert.equal(nodeNamed('Extract PDF Text').parameters.options.keepSource, 'both');
+  assert.ok(!wf.nodes.some((n) => n.name === 'Convert PDF to Image'), 'n8n has no PDF-to-image operation');
+  assert.equal(wf.connections['IF PDF Text Length > 50'].main[1][0].node, 'binaryToBase64');
+
+  const pdf = Buffer.from('%PDF-1.4 scanned page');
+  const [encoded] = await runNode('binaryToBase64', [{ json: {}, binary: { attachment: { buffer: pdf, mimeType: 'application/pdf', fileName: 'scan.pdf' } } }]);
+  assert.equal(encoded.json.mimeType, 'application/pdf');
+  const [out] = await runNode('Prepare Claude Multimodal Payload', [encoded]);
+  const block = out.json.claude_payload.messages[0].content[0];
+  assert.equal(block.type, 'document');
+  assert.equal(block.source.media_type, 'application/pdf');
+  assert.equal(block.source.data, pdf.toString('base64'));
+});
+
+test('a photo goes to Claude as an image', async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  const [encoded] = await runNode('binaryToBase64', [{ json: {}, binary: { attachment: { buffer: png, mimeType: 'image/png', fileName: 'receipt.png' } } }]);
+  const [out] = await runNode('Prepare Claude Multimodal Payload', [encoded]);
+  assert.equal(out.json.claude_payload.messages[0].content[0].type, 'image');
+});
