@@ -1,0 +1,2 @@
+# Byte offsets inside a PDF break if line endings are converted.
+*.pdf binary

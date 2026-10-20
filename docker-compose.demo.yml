@@ -1,0 +1,20 @@
+# Demo mode: the workflow in n8n with no Google account and no Claude key.
+#   node demo/make-samples.mjs && node scripts/build-demo-workflow.mjs
+#   docker compose -f docker-compose.demo.yml up
+# Then open http://localhost:5678, create the local owner account n8n asks for, open
+# "LedgerQuarry (demo mode)" and press "Execute workflow". Results land in demo/out/.
+services:
+  n8n:
+    image: n8nio/n8n:2.43.8
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_RESTRICT_FILE_ACCESS_TO=/demo
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_PERSONALIZATION_ENABLED=false
+      - N8N_SECURE_COOKIE=false
+      - GENERIC_TIMEZONE=Europe/Budapest
+    volumes:
+      - ./demo:/demo
+      - ./workflows/demo-workflow.json:/import/demo-workflow.json:ro
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /demo/out && n8n import:workflow --input=/import/demo-workflow.json && exec n8n start"]

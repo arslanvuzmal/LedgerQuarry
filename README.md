@@ -1,142 +1,164 @@
-# 🧾 OmniExtract: Enterprise AI Invoice Data Extractor
+# LedgerQuarry: invoice extraction in n8n
 
-<div align="center">
-  <img src="./assets/ui-screenshot.png" alt="OmniExtract Hero Banner"> 
-</div>
+[![CI](https://github.com/arslanvuzmal/LedgerQuarry/actions/workflows/ci.yml/badge.svg)](https://github.com/arslanvuzmal/LedgerQuarry/actions/workflows/ci.yml)
+![n8n](https://img.shields.io/badge/n8n-2.43-FF6F61)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-<div align="center">
-  
-[![n8n v1.0+](https://img.shields.io/badge/n8n-v1.0%2B-FF6F61?style=for-the-badge&logo=n8n)](https://n8n.io)
-[![Claude 4.5 Sonnet](https://img.shields.io/badge/Model-Claude%204.5%20Sonnet-CD7F32?style=for-the-badge&logo=anthropic)](https://anthropic.com)
-[![Google Sheets](https://img.shields.io/badge/Sheets-Enterprise-34A853?style=for-the-badge&logo=google-sheets)](https://google.com/sheets)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
+An n8n workflow that takes invoices from Gmail or Google Drive, has Claude read them into JSON, checks
+the numbers in plain code, and writes each invoice to a Google Sheet as **AUTO_APPROVED**,
+**REVIEW_RECOMMENDED** or **REVIEW_REQUIRED**. Duplicates are kept out of the sheet and reported.
 
-**Intelligent. Resilient. Fully Automated.**
+The project was previously called OmniExtract; some files still use that name.
 
-</div>
-
-An enterprise-grade, fault-tolerant document processing and auditing system built in **n8n**. OmniExtract automates the ingestion, extraction, deterministic auditing, compliance classification, duplicate prevention, and archiving of complex invoice files at scale.
+![The demo after a run: four invoices in, one caught as a duplicate, three written to the ledger](assets/demo-decisions.png)
 
 ---
 
-## 📚 Documentation & Guides
+## What it does
 
-Whether you are a developer deploying the system or an operator maintaining it, everything you need is documented:
-
-* 🚀 **[Zero-to-Hero Installation Guide](docs/INSTALLATION.md)** - Step-by-step GCP setup and n8n Docker deployment.
-* 🛡️ **[Enterprise Security Audit](docs/ENTERPRISE_AUDIT.md)** - Learn how this architecture scales securely.
-* 🛠️ **[Day 2 Maintenance Protocol](docs/MAINTENANCE.md)** - Monitoring, backup, and safe update strategies.
-
----
-
-## 🌟 Key Capabilities
-
-* ✅ **Multimodal Ingestion:** Dynamically processes clean text-based PDFs, scanned image-based PDFs, and direct JPEGs/PNGs.
-* ✅ **Claude 3.5 Sonnet Engine:** Extracts complex nested tables and metadata with custom multimodal prompting and 3-retry exponential backoff protection.
-* ✅ **Deterministic Auditing:** Performs strict mathematical assertion checks on line items vs. subtotals.
-* ✅ **Compliance Triage:** Classifies invoices dynamically into `AUTO_APPROVED` 🟢, `REVIEW_RECOMMENDED` 🟡, and `REVIEW_REQUIRED` 🔴.
-* ✅ **Zero-Duplicate Architecture:** Auto-diverts duplicate submittals to quarantine folders while keeping the master Google Sheet pristine.
-* ✅ **Dead-Letter Telemetry:** Logs granular processing durations and Claude token usage to dedicated audit tracking sheets.
-
----
-
-## 📊 Enterprise Pipeline Architecture
-
-The following diagram illustrates the 5 distinct operational layers within the n8n pipeline.
+1. **In:** a Gmail attachment or a new file in a Drive folder (PDF, JPEG or PNG). The file type is read
+   from the file's first bytes, not its name.
+2. **Read:** text PDFs go to Claude as text (cut at 10,000 characters); scanned PDFs go as a PDF
+   document and photos as an image. Claude returns every field with a confidence from 0 to 100.
+3. **Check, in code, not by the model:**
+   - line items must add up to the subtotal, and subtotal + tax to the total, within 0.02;
+   - invoice number, date, total and vendor must be present; dates must be YYYY-MM-DD;
+   - a negative total is a credit note.
+4. **Decide:**
+   - **REVIEW_REQUIRED** if the numbers do not add up, or the invoice number or total is missing;
+   - **REVIEW_RECOMMENDED** if the average confidence is under 75, more than two fields are under 75,
+     or it is a credit note;
+   - **AUTO_APPROVED** otherwise.
+5. **Duplicates:** an invoice whose vendor, number and total are already in the sheet is not written
+   again; an alert email goes out and the file is filed under duplicates.
+6. **Out:** a row in the ledger sheet, an email (approved, or needs review), the file filed in a month
+   folder in Drive, and a row in the audit log. Failed extractions go to an error log and alert the admin.
 
 ```mermaid
-flowchart TD
-    %% Styling definitions
-    classDef layerTrigger fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#000;
-    classDef layerIngest fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#000;
-    classDef layerAI fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#000;
-    classDef layerAudit fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#000;
-    classDef layerOutput fill:#ffe4e6,stroke:#e11d48,stroke-width:2px,color:#000;
-
-    %% 1. TRIGGER LAYER
-    subgraph Trigger_Layer [1. Trigger Layer]
-        A[Gmail Attachment Trigger]
-        B[Google Drive File Trigger]
-    end
-    class Trigger_Layer,A,B layerTrigger;
-
-    %% 2. INGESTION LAYER
-    subgraph Ingestion_Layer [2. Ingestion & Routing Layer]
-        C[Detect File Type]
-        D{Format Switch}
-        E[Extract PDF Text]
-        F{Length > 50 chars?}
-        G[Convert PDF to JPEG]
-        H[Binary to Base64]
-    end
-    class Ingestion_Layer,C,D,E,F,G,H layerIngest;
-
-    %% 3. AI PROCESSING LAYER
-    subgraph AI_Layer [3. AI Processing Layer]
-        I[Prepare Claude Payload & Truncate]
-        J[Claude 3.5 Sonnet Vision API]
-        K[Parse JSON Response]
-    end
-    class AI_Layer,I,J,K layerAI;
-
-    %% 4. VALIDATION & COMPLIANCE LAYER
-    subgraph Validation_Layer [4. Validation Layer]
-        L[Validate Math & Line Items]
-        M[Validate Required Fields & Credit Notes]
-        N[Determine Status Color Code]
-        O{Is Duplicate?}
-    end
-    class Validation_Layer,L,M,N,O layerAudit;
-
-    %% 5. OUTPUT & FILE ARCHIVING LAYER
-    subgraph Output_Layer [5. Output & Archiving Layer]
-        P[Google Sheets Append]
-        Q{Status Check}
-        R[Send Slack/Email Alert]
-        S[Archive Processed File]
-        T[Append to Audit_Log / Error_Log]
-        U[Quarantine Duplicate File]
-    end
-    class Output_Layer,P,Q,R,S,T,U layerOutput;
-
-    %% Routing logic
-    A & B --> C --> D
-    
-    D -- "PDF" --> E --> F
-    F -- "Text Heavy" --> I
-    F -- "Scanned" --> G --> H --> I
-    D -- "Image" --> H
-    
-    I --> J --> K
-    
-    K --> L --> M --> N --> O
-    
-    O -- "NO" --> P
-    O -- "YES" --> U
-    
-    P --> Q
-    Q -- "Review Needed" --> R
-    
-    P --> S --> T
+flowchart LR
+    A[Gmail / Drive] --> B[detectFileType]
+    B --> C{PDF with text?}
+    C -- yes --> D[Extract text]
+    C -- no --> E[PDF / image as base64]
+    D --> F[Claude: fields + confidence]
+    E --> F
+    F --> G[Parse]
+    G --> H[validateMath]
+    H --> I[validateFields]
+    I --> J[classifyConfidence]
+    J --> K[determineStatus]
+    K --> L{Already in sheet?}
+    L -- yes --> M[Duplicate alert + file]
+    L -- no --> N[Append to ledger]
+    N --> O[Email: approved / needs review]
+    N --> P[File in Drive + audit log]
+    G -. extraction failed .-> Q[Error log + admin alert]
 ```
 
----
-
-## 📸 Visual Demo Assets (Strategy)
-
-To make this repository visually compelling for stakeholders, place the following screenshots in the `/assets/` directory (these are currently placeholders to be updated by the developer):
-
-1. **`assets/01-n8n-canvas.png` (The Brain):** A wide, zoomed-out shot of the beautiful 26-node n8n canvas demonstrating the scale and visual branching of the logic.
-2. **`assets/02-google-sheets-dashboard.png` (The Output):** A close-up of the `Sheet1` ledger. Showcase the conditional formatting—rows glowing Green (Auto-Approved) alongside Red (Review Required) rows to prove the triage works.
-3. **`assets/03-claude-multimodal.png` (The Intelligence):** A split-screen shot. On the left, a blurry/scanned PDF invoice. On the right, the perfectly structured JSON output generated by Claude 3.5 Sonnet.
-4. **`assets/04-duplicate-quarantine.png` (The Safety Net):** An email screenshot of the high-priority "Duplicate Alert" showing that the system successfully caught and blocked a double-submittal.
-
-> **Note to Junior Dev:** Take these 4 screenshots on your local deployment and update the image tags below!
-
-### Platform Previews
-![n8n Canvas](assets/01-n8n-canvas.png)
+The checks and the decision are the Code nodes `validateMath`, `validateFields`, `classifyConfidence`
+and `determineStatus` in [`workflows/workflow.json`](workflows/workflow.json).
 
 ---
 
-## 📜 License
-Licensed under the [MIT License](LICENSE).
+## Run the demo (no Google account, no Claude key)
+
+Needs Docker and Node.js 20+.
+
+```bash
+node demo/make-samples.mjs            # four made-up invoices -> demo/inbox/
+node scripts/build-demo-workflow.mjs  # workflows/demo-workflow.json
+docker compose -f docker-compose.demo.yml up
+```
+
+Open http://localhost:5678, create the local owner account n8n asks for, open
+**LedgerQuarry (demo mode)** and press **Execute workflow**. The ledger and audit log are written to
+`demo/out/`. To run it without the editor:
+
+```bash
+docker compose -f docker-compose.demo.yml exec -e N8N_RUNNERS_BROKER_PORT=5681 n8n \
+  n8n execute --id LedgerQuarryDemo
+node demo/check-output.mjs
+```
+
+**What demo mode changes.** `scripts/build-demo-workflow.mjs` builds the demo from the real workflow.
+The Code nodes with the logic are copied unchanged; only the outside services are replaced, each by a
+node of the same name with a note on the canvas:
+
+| Real workflow | Demo mode |
+|---|---|
+| Gmail / Drive triggers | A manual trigger that reads `demo/inbox/*.pdf` |
+| Claude API call | The answer in [`demo/answers.json`](demo/answers.json), written by hand to match each sample. It is not model output. |
+| Google Sheets (duplicate check, ledger, logs) | Last month's rows in [`demo/sheet-seed.json`](demo/sheet-seed.json); new rows go to `demo/out/*.csv` |
+| Gmail sends | The email it would send, with `sent: false` |
+| Google Drive filing | Where the file would be filed |
+
+The four samples cover each path: an invoice that is approved, one whose line items do not add up
+(the supplier's subtotal is wrong), a credit note, and an invoice that is already in the sheet.
+
+![Review email for the invoice whose line items do not add up](assets/demo-review-email.png)
+
+---
+
+## Run it for real
+
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for the Google Cloud and n8n setup. You need:
+
+| Credential in n8n | Used by |
+|---|---|
+| Gmail OAuth2 | Gmail trigger and the four emails |
+| Google Drive OAuth2 | Drive trigger and filing |
+| Google Sheets OAuth2 | Duplicate check, ledger, audit and error logs |
+| Header auth with your Anthropic API key | Claude API Call |
+
+Replace `YOUR_SPREADSHEET_ID_HERE` and `YOUR_PROCESSED_PARENT_FOLDER_ID_HERE` in the workflow. The
+Claude call uses `claude-sonnet-5-5` with `max_tokens` 16000 and the server-side refusal fallback.
+
+---
+
+## Tests and CI
+
+```bash
+node --test tests/*.test.mjs
+```
+
+The tests run each Code node's source straight from `workflows/workflow.json`, so they test what ships:
+the arithmetic and its 0.02 tolerance, required fields, dates, credit notes, the confidence rules, the
+three statuses, parsing (including a thinking block before the answer, refusals and bad JSON), file-type
+detection, and the structural fixes listed below.
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the tests, checks that
+`demo-workflow.json` is up to date, and runs the demo in n8n 2.43.8, then checks what it wrote.
+
+### Fixed by running it
+
+Running the workflow end to end in n8n for the first time found these; each is now covered by a test:
+
+- The model `claude-3-5-sonnet-20241022` is retired; the call now uses a current one.
+- The reply was read from `content[0]`; a thinking block can come first.
+- With no matching row, the duplicate check returned nothing and new invoices never reached the sheet.
+- Three IF nodes used an operation that does not exist (`notEmpty`) and crashed.
+- The success check read a node that had not run yet, and its error branch was on the wrong output.
+- The two Merge nodes used an option from an older Merge version and output nothing, so no invoice was
+  filed or audit-logged.
+- The audit log's processing time was always `NaN`.
+- Scanned PDFs could not be read: "Convert PDF to Image" used an operation n8n's Convert to File node
+  does not have, and text extraction dropped the file. Scans now go to Claude as a PDF document. This
+  path is covered by unit tests; the four demo samples all have a text layer.
+
+---
+
+## Files
+
+```
+workflows/workflow.json        the workflow
+workflows/demo-workflow.json   generated demo version (do not edit; run the build script)
+scripts/build-demo-workflow.mjs
+scripts/sheets_trigger.gs      Apps Script for the Google Sheet
+demo/                          samples, hand-written answers, last month's rows, output check
+tests/                         node --test, no dependencies
+docs/                          installation and maintenance notes
+```
+
+## Licence
+
+[MIT](LICENSE)

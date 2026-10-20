@@ -1,0 +1,1247 @@
+{
+  "name": "LedgerQuarry (demo mode)",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  // When this file entered the pipeline; the audit log measures processing time from here.\n  item.json.received_at = new Date().toISOString();\n  const binaryKeys = Object.keys(item.binary || {});\n  \n  // Check if originated from Drive (has fileId) vs Gmail (has attachment)\n  item.json.origin = item.json.id && !item.json.messageId ? 'drive' : 'gmail';\n  item.json.drive_file_id = item.json.id || null;\n\n  if (binaryKeys.length === 0) {\n    item.json.fileType = 'unknown';\n    item.json.has_attachment = false;\n    continue;\n  }\n  item.json.has_attachment = true;\n  \n  const attachmentKey = binaryKeys.find(k => {\n    const mime = (item.binary[k].mimeType || '').toLowerCase();\n    const name = (item.binary[k].fileName || '').toLowerCase();\n    return mime.includes('pdf') || mime.includes('jpeg') || mime.includes('jpg') || mime.includes('png') ||\n           name.endsWith('.pdf') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png');\n  }) || binaryKeys[0];\n\n  item.json.attachment_key = attachmentKey;\n  item.json.pdf_filename = item.binary[attachmentKey].fileName;\n  item.json.pdf_mime_type = item.binary[attachmentKey].mimeType;\n\n  try {\n    const buffer = await this.helpers.getBinaryDataBuffer(i, attachmentKey);\n    if (buffer && buffer.length >= 4) {\n      const magic = buffer.readUInt32BE(0);\n      if (magic === 0x25504446) {\n        item.json.fileType = 'pdf';\n      } else if (magic === 0x89504E47) {\n        item.json.fileType = 'png';\n      } else if ((magic >> 8) === 0xFFD8FF || magic === 0xFFD8FFE0 || magic === 0xFFD8FFE1) {\n        item.json.fileType = 'jpeg';\n      } else {\n        const mime = (item.binary[attachmentKey].mimeType || '').toLowerCase();\n        if (mime.includes('pdf')) {\n          item.json.fileType = 'pdf';\n        } else if (mime.includes('jpeg') || mime.includes('jpg')) {\n          item.json.fileType = 'jpeg';\n        } else if (mime.includes('png')) {\n          item.json.fileType = 'png';\n        } else {\n          item.json.fileType = 'unknown';\n        }\n      }\n    } else {\n      item.json.fileType = 'unknown';\n    }\n  } catch (e) {\n    item.json.fileType = 'unknown';\n    item.json.detection_error = e.message;\n  }\n\n  let email = null;\n  if (item.json.from) {\n    if (typeof item.json.from === 'string') {\n      const match = item.json.from.match(/<([^>]+)>/);\n      email = match ? match[1] : item.json.from;\n    } else if (item.json.from.value && item.json.from.value[0]) {\n      email = item.json.from.value[0].address;\n    } else if (item.json.from.text) {\n      const match = item.json.from.text.match(/<([^>]+)>/);\n      email = match ? match[1] : item.json.from.text;\n    }\n  }\n  item.json.sender_email = email || 'drive-system@example.com';\n  \n  item.binary = {\n    attachment: item.binary[attachmentKey]\n  };\n}\nreturn items;"
+      },
+      "id": "detect-file-type-id",
+      "name": "detectFileType",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.fileType }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "pdf",
+              "output": 0
+            },
+            {
+              "value2": "jpeg",
+              "output": 1
+            },
+            {
+              "value2": "png",
+              "output": 1
+            }
+          ]
+        },
+        "fallbackOutput": 2
+      },
+      "id": "switch-routing-id",
+      "name": "Switch Routing",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment",
+        "options": {
+          "keepSource": "both"
+        }
+      },
+      "id": "extract-pdf-text-id",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        620,
+        140
+      ],
+      "settings": {
+        "onError": "continueRegularOutput"
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.text ? $json.text.length : 0 }}",
+              "operation": "larger",
+              "value2": 50
+            }
+          ]
+        }
+      },
+      "id": "if-text-length-id",
+      "name": "IF PDF Text Length > 50",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        820,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const binaryKeys = Object.keys(item.binary || {});\n  if (binaryKeys.length === 0) {\n    item.json.base64String = '';\n    item.json.mimeType = 'image/jpeg';\n    item.json.path = 'vision';\n    continue;\n  }\n  \n  const imageKey = binaryKeys.find(k => {\n    const mime = (item.binary[k].mimeType || '').toLowerCase();\n    return mime.includes('jpeg') || mime.includes('jpg') || mime.includes('png');\n  }) || binaryKeys[0];\n  \n  try {\n    const buffer = await this.helpers.getBinaryDataBuffer(i, imageKey);\n    if (buffer) {\n      item.json.base64String = buffer.toString('base64');\n      item.json.mimeType = item.binary[imageKey].mimeType || 'image/jpeg';\n    } else {\n      item.json.base64String = '';\n      item.json.mimeType = 'image/jpeg';\n    }\n  } catch (err) {\n    console.error('Failed to encode binary to base64', err);\n    item.json.base64String = '';\n    item.json.mimeType = 'image/jpeg';\n  }\n  item.json.path = 'vision';\n}\nreturn items;"
+      },
+      "id": "binary-to-base64-id",
+      "name": "binaryToBase64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1220,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const systemPrompt = `You are a specialized invoice data extraction engine. You will receive either raw text or an image of an invoice. Extract structured data and return ONLY valid JSON with no markdown formatting, no explanations, no preamble.\n\nReturn this exact JSON structure with all fields present:\n\n{\n  \"invoice_number\": {\"value\": null, \"confidence\": 0},\n  \"invoice_date\": {\"value\": null, \"confidence\": 0},\n  \"due_date\": {\"value\": null, \"confidence\": 0},\n  \"vendor\": {\n    \"name\": {\"value\": null, \"confidence\": 0},\n    \"address\": {\"value\": null, \"confidence\": 0},\n    \"email\": {\"value\": null, \"confidence\": 0}\n  },\n  \"client\": {\n    \"name\": {\"value\": null, \"confidence\": 0}\n  },\n  \"line_items\": [\n    {\n      \"description\": {\"value\": null, \"confidence\": 0},\n      \"quantity\": {\"value\": null, \"confidence\": 0},\n      \"unit_price\": {\"value\": null, \"confidence\": 0},\n      \"line_total\": {\"value\": null, \"confidence\": 0}\n    }\n  ],\n  \"currency\": {\"value\": null, \"confidence\": 0},\n  \"subtotal\": {\"value\": null, \"confidence\": 0},\n  \"tax_amount\": {\"value\": null, \"confidence\": 0},\n  \"total\": {\"value\": null, \"confidence\": 0},\n  \"payment_terms\": {\"value\": null, \"confidence\": 0}\n}\n\nRules:\n1. All dates must be YYYY-MM-DD format\n2. All monetary values must be numeric only (no $, no commas)\n3. If a field is not present, use {\"value\": null, \"confidence\": 100}\n4. line_items must be an array (even if single item)\n\nAdditional Rule for Images: If reading from an image, infer missing context visually (e.g., logos for vendor name, layout for line items). If a field is completely illegible, use {\"value\": null, \"confidence\": 0}.`;\n\nconst path = item.json.path || 'text';\nlet content = [];\n\nif (path === 'text') {\n  let extractedText = item.json.text || '';\n  if (extractedText.length > 10000) {\n    extractedText = extractedText.substring(0, 10000) + '\\n... [TRUNCATED DUE TO 10,000 CHAR LIMIT]';\n  }\n  content = [\n    {\n      type: \"text\",\n      text: `${systemPrompt}\\n\\nINVOICE TEXT:\\n${extractedText}`\n    }\n  ];\n} else if (path === 'vision') {\n  const base64String = item.json.base64String || '';\n  const mimeType = item.json.mimeType || 'image/jpeg';\n  // Scanned PDFs are sent as a PDF document block (Claude reads PDFs directly); JPEG/PNG as an image.\n  const source = { type: \"base64\", media_type: mimeType, data: base64String };\n  content = [\n    mimeType === \"application/pdf\" ? { type: \"document\", source } : { type: \"image\", source },\n    { type: \"text\", text: systemPrompt }\n  ];\n}\n\nitem.json.claude_payload = {\n  // claude-3-5-sonnet-20241022 is retired. Current Sonnet; thinking is on by default and counts\n  // towards max_tokens, so 2000 could cut the JSON off.\n  model: 'claude-sonnet-5-5',\n  max_tokens: 16000,\n  // If the model declines a document, the API retries it on a fallback model in the same call.\n  fallbacks: 'default',\n  messages: [\n    {\n      role: 'user',\n      content: content\n    }\n  ]\n};\nreturn item;"
+      },
+      "id": "prepare-claude-multimodal-payload-id",
+      "name": "Prepare Claude Multimodal Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1420,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the httpRequest node \"Claude API Call\" in workflow.json.\nconst ANSWERS = {\"1-northwind-INV-1042.pdf\":{\"invoice_number\":{\"value\":\"INV-1042\",\"confidence\":98},\"invoice_date\":{\"value\":\"2026-10-02\",\"confidence\":97},\"due_date\":{\"value\":\"2026-11-01\",\"confidence\":96},\"vendor\":{\"name\":{\"value\":\"Northwind Office Supplies Kft.\",\"confidence\":97},\"address\":{\"value\":\"12 Mill Road, 1095 Budapest\",\"confidence\":92},\"email\":{\"value\":\"billing@northwind.example\",\"confidence\":95}},\"client\":{\"name\":{\"value\":\"Lakeside Dental\",\"confidence\":94}},\"line_items\":[{\"description\":{\"value\":\"Copy paper, A4 (box)\",\"confidence\":95},\"quantity\":{\"value\":10,\"confidence\":97},\"unit_price\":{\"value\":5.5,\"confidence\":96},\"line_total\":{\"value\":55,\"confidence\":97}},{\"description\":{\"value\":\"Toner cartridge\",\"confidence\":95},\"quantity\":{\"value\":2,\"confidence\":97},\"unit_price\":{\"value\":42.5,\"confidence\":96},\"line_total\":{\"value\":85,\"confidence\":97}}],\"currency\":{\"value\":\"EUR\",\"confidence\":96},\"subtotal\":{\"value\":140,\"confidence\":97},\"tax_amount\":{\"value\":37.8,\"confidence\":96},\"total\":{\"value\":177.8,\"confidence\":98},\"payment_terms\":{\"value\":\"30 days\",\"confidence\":93}},\"2-kovacs-print-2044.pdf\":{\"invoice_number\":{\"value\":\"2044\",\"confidence\":96},\"invoice_date\":{\"value\":\"2026-10-05\",\"confidence\":97},\"due_date\":{\"value\":\"2026-10-20\",\"confidence\":96},\"vendor\":{\"name\":{\"value\":\"Kovacs Print Bt.\",\"confidence\":96},\"address\":{\"value\":\"4 Csengery utca, 1067 Budapest\",\"confidence\":91},\"email\":{\"value\":\"invoices@kovacsprint.example\",\"confidence\":95}},\"client\":{\"name\":{\"value\":\"Lakeside Dental\",\"confidence\":94}},\"line_items\":[{\"description\":{\"value\":\"Appointment cards\",\"confidence\":95},\"quantity\":{\"value\":1000,\"confidence\":96},\"unit_price\":{\"value\":0.12,\"confidence\":95},\"line_total\":{\"value\":120,\"confidence\":97}},{\"description\":{\"value\":\"Window vinyl\",\"confidence\":95},\"quantity\":{\"value\":1,\"confidence\":97},\"unit_price\":{\"value\":80,\"confidence\":96},\"line_total\":{\"value\":80,\"confidence\":97}}],\"currency\":{\"value\":\"EUR\",\"confidence\":96},\"subtotal\":{\"value\":210,\"confidence\":97},\"tax_amount\":{\"value\":56.7,\"confidence\":96},\"total\":{\"value\":266.7,\"confidence\":98},\"payment_terms\":{\"value\":\"15 days\",\"confidence\":93}},\"3-harbour-CN-77.pdf\":{\"invoice_number\":{\"value\":\"CN-77\",\"confidence\":96},\"invoice_date\":{\"value\":\"2026-10-07\",\"confidence\":96},\"due_date\":{\"value\":null,\"confidence\":100},\"vendor\":{\"name\":{\"value\":\"Harbour Medical Supply Ltd\",\"confidence\":96},\"address\":{\"value\":\"9 Quay Street, Dublin 2\",\"confidence\":92},\"email\":{\"value\":\"accounts@harbourmedical.example\",\"confidence\":95}},\"client\":{\"name\":{\"value\":\"Lakeside Dental\",\"confidence\":94}},\"line_items\":[{\"description\":{\"value\":\"Returned gloves, box\",\"confidence\":94},\"quantity\":{\"value\":-1,\"confidence\":95},\"unit_price\":{\"value\":42.5,\"confidence\":95},\"line_total\":{\"value\":-42.5,\"confidence\":96}}],\"currency\":{\"value\":\"EUR\",\"confidence\":96},\"subtotal\":{\"value\":-42.5,\"confidence\":96},\"tax_amount\":{\"value\":-11.48,\"confidence\":95},\"total\":{\"value\":-53.98,\"confidence\":97},\"payment_terms\":{\"value\":null,\"confidence\":100}},\"4-northwind-INV-1001.pdf\":{\"invoice_number\":{\"value\":\"INV-1001\",\"confidence\":98},\"invoice_date\":{\"value\":\"2026-09-03\",\"confidence\":97},\"due_date\":{\"value\":\"2026-10-03\",\"confidence\":96},\"vendor\":{\"name\":{\"value\":\"Northwind Office Supplies Kft.\",\"confidence\":97},\"address\":{\"value\":\"12 Mill Road, 1095 Budapest\",\"confidence\":92},\"email\":{\"value\":\"billing@northwind.example\",\"confidence\":95}},\"client\":{\"name\":{\"value\":\"Lakeside Dental\",\"confidence\":94}},\"line_items\":[{\"description\":{\"value\":\"Copy paper, A4 (box)\",\"confidence\":95},\"quantity\":{\"value\":20,\"confidence\":97},\"unit_price\":{\"value\":5.5,\"confidence\":96},\"line_total\":{\"value\":110,\"confidence\":97}}],\"currency\":{\"value\":\"EUR\",\"confidence\":96},\"subtotal\":{\"value\":110,\"confidence\":97},\"tax_amount\":{\"value\":29.7,\"confidence\":96},\"total\":{\"value\":139.7,\"confidence\":98},\"payment_terms\":{\"value\":\"30 days\",\"confidence\":93}}};\nconst file = $('detectFileType').item.json.pdf_filename;\nconst answer = ANSWERS[file];\nif (!answer) return { json: { error: { type: 'demo', message: 'No demo answer for ' + file } } };\nreturn {\n  json: {\n    type: 'message',\n    role: 'assistant',\n    model: $json.claude_payload.model,\n    content: [{ type: 'text', text: JSON.stringify(answer) }],\n    stop_reason: 'end_turn',\n  },\n};"
+      },
+      "id": "claude-api-call-id",
+      "name": "Claude API Call",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        140
+      ],
+      "settings": {
+        "onError": "continueRegularOutput"
+      },
+      "notes": "Demo mode: returns the hand-written answer for this file from demo/answers.json instead of calling Claude.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let extracted = {\n  invoice_number: null,\n  invoice_date: null,\n  due_date: null,\n  vendor_name: null,\n  vendor_address: null,\n  vendor_email: null,\n  client_name: null,\n  subtotal: null,\n  tax_amount: null,\n  total: null,\n  currency: null,\n  raw_response: null\n};\n\n// Current models can return a thinking block before the answer; use the first text block.\nconst textBlock = Array.isArray(item.json.content) ? item.json.content.find((b) => b && b.type === 'text' && b.text) : null;\n\nif (item.json.error || item.json.stop_reason === 'refusal' || !textBlock) {\n  extracted.raw_response = item.json.error ? JSON.stringify(item.json.error) : item.json.stop_reason === 'refusal' ? 'REFUSED' : 'API_FAILED_OR_INVALID_RESPONSE';\n  item.json.extracted_data = extracted;\n  item.json.extracted_json = null;\n  item.json.success = false;\n  return item;\n}\n\nconst rawText = textBlock.text;\nextracted.raw_response = rawText;\n\ntry {\n  let jsonStr = rawText.trim();\n  if (jsonStr.includes('```json')) {\n    jsonStr = jsonStr.split('```json')[1].split('```')[0].trim();\n  } else if (jsonStr.includes('```')) {\n    jsonStr = jsonStr.split('```')[1].split('```')[0].trim();\n  }\n\n  const data = JSON.parse(jsonStr);\n\n  extracted.invoice_number = data.invoice_number?.value ?? null;\n  extracted.invoice_date = data.invoice_date?.value ?? null;\n  extracted.due_date = data.due_date?.value ?? null;\n  extracted.vendor_name = data.vendor?.name?.value ?? null;\n  extracted.vendor_address = data.vendor?.address?.value ?? null;\n  extracted.vendor_email = data.vendor?.email?.value ?? null;\n  extracted.client_name = data.client?.name?.value ?? null;\n  extracted.subtotal = data.subtotal?.value ?? null;\n  extracted.tax_amount = data.tax_amount?.value ?? null;\n  extracted.total = data.total?.value ?? null;\n  extracted.currency = data.currency?.value ?? null;\n  \n  item.json.extracted_data = extracted;\n  item.json.extracted_json = data;\n  item.json.success = true;\n} catch (err) {\n  console.error('Failed to parse Claude response JSON', err);\n  extracted.raw_response = 'PARSE_FAILED: ' + rawText;\n  item.json.extracted_data = extracted;\n  item.json.extracted_json = null;\n  item.json.success = false;\n}\nreturn item;"
+      },
+      "id": "parse-claude-response-id",
+      "name": "Parse Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item;\nitem.json.mathDiscrepancies = [];\nitem.json.flags = item.json.flags || [];\n\nif (item.json.success && item.json.extracted_json) {\n  const data = item.json.extracted_json;\n\n  // Check 1: Line Items Sum vs Subtotal\n  if (data.line_items && Array.isArray(data.line_items) && data.subtotal && data.subtotal.value !== null) {\n    let lineItemsSum = 0;\n    let hasLineItems = false;\n    for (const line of data.line_items) {\n      if (line.line_total && line.line_total.value !== null) {\n        const val = parseFloat(line.line_total.value);\n        if (!isNaN(val)) {\n          lineItemsSum += val;\n          hasLineItems = true;\n        }\n      }\n    }\n    \n    if (hasLineItems) {\n      const subtotalVal = parseFloat(data.subtotal.value);\n      if (!isNaN(subtotalVal)) {\n        const diff = Math.abs(lineItemsSum - subtotalVal);\n        if (diff > 0.02) {\n          item.json.mathDiscrepancies.push(`Line items sum (${lineItemsSum.toFixed(2)}) ≠ subtotal (${subtotalVal.toFixed(2)})`);\n          item.json.flags.push(\"LINE_ITEM_SUM_MISMATCH\");\n        }\n      }\n    }\n  }\n\n  // Check 2: Grand Total Match\n  if (data.subtotal && data.subtotal.value !== null && data.total && data.total.value !== null) {\n    const subtotal = parseFloat(data.subtotal.value);\n    const total = parseFloat(data.total.value);\n    const tax = data.tax_amount && data.tax_amount.value !== null ? parseFloat(data.tax_amount.value) : 0;\n    const discount = data.discount_amount && data.discount_amount.value !== null ? parseFloat(data.discount_amount.value) : 0;\n    \n    if (!isNaN(subtotal) && !isNaN(total)) {\n      const expectedTotal = subtotal + tax - discount;\n      const diff = Math.abs(expectedTotal - total);\n      if (diff > 0.02) {\n        item.json.mathDiscrepancies.push(`Calculated total (${expectedTotal.toFixed(2)}) ≠ stated total (${total.toFixed(2)})`);\n        item.json.flags.push(\"TOTAL_MISMATCH\");\n      }\n    }\n  }\n}\n\nreturn item;"
+      },
+      "id": "validate-math-id",
+      "name": "validateMath",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2020,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item;\nitem.json.flags = item.json.flags || [];\n\nif (item.json.success && item.json.extracted_json) {\n  const data = item.json.extracted_json;\n\n  // Required fields check\n  const required = {\n    \"invoice_number\": data.invoice_number?.value,\n    \"invoice_date\": data.invoice_date?.value,\n    \"total\": data.total?.value,\n    \"vendor.name\": data.vendor?.name?.value\n  };\n\n  for (const [key, val] of Object.entries(required)) {\n    if (val === null || val === undefined) {\n      const flagName = `MISSING_${key.toUpperCase().replace('.', '_')}`;\n      item.json.flags.push(flagName);\n    }\n  }\n\n  // Date format check\n  const dateRegex = /^\\d{4}-\\d{2}-\\d{2}$/;\n  if (data.invoice_date?.value && !dateRegex.test(data.invoice_date.value)) {\n    item.json.flags.push(\"INVALID_DATE_FORMAT_INVOICE_DATE\");\n  }\n  if (data.due_date?.value && !dateRegex.test(data.due_date.value)) {\n    item.json.flags.push(\"INVALID_DATE_FORMAT_DUE_DATE\");\n  }\n\n  // Negative values check (Credit Notes)\n  if (data.total?.value !== null && data.total?.value !== undefined) {\n    const totalVal = parseFloat(data.total.value);\n    if (!isNaN(totalVal) && totalVal < 0) {\n      item.json.flags.push(\"CREDIT_NOTE\");\n    }\n  }\n} else {\n  // Fail path / Unsupported file / Extraction failed\n  item.json.flags.push(\"MISSING_INVOICE_NUMBER\");\n  item.json.flags.push(\"MISSING_INVOICE_DATE\");\n  item.json.flags.push(\"MISSING_TOTAL\");\n  item.json.flags.push(\"MISSING_VENDOR_NAME\");\n}\n\nreturn item;"
+      },
+      "id": "validate-fields-id",
+      "name": "validateFields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item;\nitem.json.lowConfidenceFields = [];\nitem.json.avgConfidence = 0;\n\nif (item.json.success && item.json.extracted_json) {\n  const data = item.json.extracted_json;\n  const scores = [];\n  const lowFields = [];\n\n  function traverse(obj, path = \"\") {\n    if (!obj || typeof obj !== \"object\") return;\n\n    if (\"value\" in obj && \"confidence\" in obj) {\n      if (obj.value !== null && obj.value !== undefined) {\n        const conf = parseInt(obj.confidence, 10);\n        if (!isNaN(conf)) {\n          scores.push(conf);\n          if (conf < 75) {\n            lowFields.push({\n              field: path,\n              confidence: conf,\n              value: obj.value\n            });\n          }\n        }\n      }\n      return;\n    }\n\n    if (Array.isArray(obj)) {\n      obj.forEach((val, idx) => {\n        traverse(val, `${path}[${idx}]`);\n      });\n    } else {\n      for (const [key, val] of Object.entries(obj)) {\n        const nextPath = path ? `${path}.${key}` : key;\n        traverse(val, nextPath);\n      }\n    }\n  }\n\n  traverse(data);\n\n  if (scores.length > 0) {\n    const sum = scores.reduce((a, b) => a + b, 0);\n    item.json.avgConfidence = Math.round(sum / scores.length);\n  } else {\n    item.json.avgConfidence = 0;\n  }\n  item.json.lowConfidenceFields = lowFields;\n} else {\n  item.json.avgConfidence = 0;\n  item.json.lowConfidenceFields = [];\n}\n\nreturn item;"
+      },
+      "id": "classify-confidence-id",
+      "name": "classifyConfidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item;\n\nconst mathDiscrepancies = item.json.mathDiscrepancies || [];\nconst flags = item.json.flags || [];\nconst avgConfidence = item.json.avgConfidence ?? 0;\nconst lowConfidenceFields = item.json.lowConfidenceFields || [];\n\nlet status = \"AUTO_APPROVED\";\nlet statusColor = \"#34A853\"; // Green\n\nif (\n  mathDiscrepancies.length > 0 ||\n  flags.includes(\"MISSING_INVOICE_NUMBER\") ||\n  flags.includes(\"MISSING_TOTAL\")\n) {\n  status = \"REVIEW_REQUIRED\";\n  statusColor = \"#EA4335\"; // Red\n} else if (\n  avgConfidence < 75 ||\n  lowConfidenceFields.length > 2 ||\n  flags.includes(\"CREDIT_NOTE\")\n) {\n  status = \"REVIEW_RECOMMENDED\";\n  statusColor = \"#FBBC04\"; // Amber\n}\n\nitem.json.status = status;\nitem.json.statusColor = statusColor;\n\nreturn item;"
+      },
+      "id": "determine-status-id",
+      "name": "determineStatus",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2620,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleSheets node \"Check Duplicate\" in workflow.json.\nconst SHEET = [{\"Timestamp\":\"2026-09-04T08:12:31.000Z\",\"Source Email\":\"billing@northwind.example\",\"Attachment Filename\":\"northwind-INV-1001.pdf\",\"Invoice Number\":\"INV-1001\",\"Invoice Date\":\"2026-09-03\",\"Vendor Name\":\"Northwind Office Supplies Kft.\",\"Total\":139.7,\"Status\":\"AUTO_APPROVED\"}];\nconst want = {\n  \"Vendor Name\": ($('determineStatus').item.json.extracted_data?.vendor_name),\n  \"Invoice Number\": ($('determineStatus').item.json.extracted_data?.invoice_number),\n  \"Total\": ($('determineStatus').item.json.extracted_data?.total),\n};\nconst row = SHEET.find((r) => Object.entries(want).every(([col, val]) => String(r[col]) === String(val)));\n// The production node is set to always output data: an empty item when nothing matches.\nreturn { json: row || {} };"
+      },
+      "id": "check-duplicate-id",
+      "name": "Check Duplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2820,
+        140
+      ],
+      "settings": {
+        "onError": "continueRegularOutput",
+        "alwaysOutputData": true
+      },
+      "notes": "Demo mode: looks the invoice up in demo/sheet-seed.json (last month’s rows) with the same filter as the Google Sheets node.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json[\"Invoice Number\"] || $json.invoice_number }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "is-duplicate-id",
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        3020,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the gmail node \"Duplicate Alert\" in workflow.json.\nreturn { json: { sent: false, to: \"admin@example.com\", subject: ('🚨 Duplicate Invoice Alert — ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown Vendor') + ' · Invoice #' + ($('determineStatus').item.json.extracted_data?.invoice_number || 'N/A')), html: ('A duplicate invoice was detected and blocked from entry.<br><br><b>Vendor:</b> ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + '<br><b>Invoice #:</b> ' + ($('determineStatus').item.json.extracted_data?.invoice_number || 'N/A') + '<br><b>Total:</b> ' + ($('determineStatus').item.json.extracted_data?.total || '0.00') + '<br><b>Action:</b> Moving file to `/Invoices/Duplicates/` and aborting Append.') } };"
+      },
+      "id": "duplicate-alert-id",
+      "name": "Duplicate Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3220,
+        40
+      ],
+      "notes": "Demo mode: shows the email it would send; nothing is sent.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleDrive node \"Search Duplicate Folder\" in workflow.json.\nreturn { json: { id: 'demo-folder', name: new Date().toISOString().substring(0, 7) } };"
+      },
+      "id": "search-duplicate-folder-id",
+      "name": "Search Duplicate Folder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3420,
+        40
+      ],
+      "settings": {
+        "onError": "continueRegularOutput",
+        "alwaysOutputData": true
+      },
+      "notes": "Demo mode: pretends this month’s folder exists in Google Drive.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.id }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "if-dup-folder-exists-id",
+      "name": "IF Dup Folder Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        3620,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleDrive node \"Create Dup Folder\" in workflow.json.\nreturn { json: { id: 'demo-folder' } };"
+      },
+      "id": "create-dup-folder-id",
+      "name": "Create Dup Folder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3820,
+        100
+      ],
+      "notes": "Demo mode: would create the month folder in Google Drive.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// The folder found or created for this invoice, plus the invoice's own file from\n// detectFileType (sheet nodes drop binary data). Replaces a Merge by position, which\n// paired folders with the wrong files once a duplicate or failure left the branch.\nconst source = $('detectFileType').item;\nreturn { json: { ...$json }, binary: source.binary };"
+      },
+      "id": "merge-dup-folder-id-id",
+      "name": "Merge Dup Folder ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4050,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $('detectFileType').item.json.origin }}",
+              "value2": "gmail"
+            }
+          ]
+        }
+      },
+      "id": "if-gmail-vs-drive-dup-id",
+      "name": "IF Gmail vs Drive (Dup)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        4250,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleDrive node \"Upload Dup Attachment\" in workflow.json.\nreturn { json: { filed: false, file: $('detectFileType').item.json.pdf_filename, folder: 'demo-folder' } };"
+      },
+      "id": "upload-dup-attachment-id",
+      "name": "Upload Dup Attachment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4450,
+        0
+      ],
+      "notes": "Demo mode: shows where the file would be filed in Google Drive.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleDrive node \"Move Dup File\" in workflow.json.\nreturn { json: { filed: false, file: $('detectFileType').item.json.pdf_filename, folder: 'demo-folder' } };"
+      },
+      "id": "move-dup-file-id",
+      "name": "Move Dup File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4450,
+        100
+      ],
+      "notes": "Demo mode: shows where the file would be filed in Google Drive.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleSheets node \"Google Sheets Append\" in workflow.json.\nreturn { json: {\n    \"Timestamp\": (new Date().toISOString()),\n    \"Source Email\": ($('detectFileType').item.json.sender_email || 'unknown@example.com'),\n    \"Attachment Filename\": ($('detectFileType').item.json.pdf_filename || 'N/A'),\n    \"Invoice Number\": ($('determineStatus').item.json.extracted_data?.invoice_number),\n    \"Invoice Date\": ($('determineStatus').item.json.extracted_data?.invoice_date),\n    \"Due Date\": ($('determineStatus').item.json.extracted_data?.due_date),\n    \"Vendor Name\": ($('determineStatus').item.json.extracted_data?.vendor_name),\n    \"Vendor Address\": ($('determineStatus').item.json.extracted_data?.vendor_address),\n    \"Vendor Email\": ($('determineStatus').item.json.extracted_data?.vendor_email),\n    \"Client Name\": ($('determineStatus').item.json.extracted_data?.client_name),\n    \"Subtotal\": ($('determineStatus').item.json.extracted_data?.subtotal),\n    \"Tax Amount\": ($('determineStatus').item.json.extracted_data?.tax_amount),\n    \"Total\": ($('determineStatus').item.json.extracted_data?.total),\n    \"Currency\": ($('determineStatus').item.json.extracted_data?.currency),\n    \"Raw Response\": ($('determineStatus').item.json.extracted_data?.raw_response || ($('detectFileType').item.json.fileType === 'unknown' ? 'UNSUPPORTED_FILE_TYPE' : 'EXTRACTION_FAILED')),\n    \"Status\": ($('determineStatus').item.json.status),\n    \"Status Color\": ($('determineStatus').item.json.statusColor),\n    \"Avg Confidence\": ($('determineStatus').item.json.avgConfidence),\n    \"Low Confidence Fields\": ($('determineStatus').item.json.lowConfidenceFields && $('determineStatus').item.json.lowConfidenceFields.length > 0 ? $('determineStatus').item.json.lowConfidenceFields.map(f => f.field + ' (' + f.confidence + '%)').join(', ') : 'None'),\n    \"Math Discrepancies\": ($('determineStatus').item.json.mathDiscrepancies && $('determineStatus').item.json.mathDiscrepancies.length > 0 ? $('determineStatus').item.json.mathDiscrepancies.join(', ') : 'None'),\n    \"Flags\": ($('determineStatus').item.json.flags && $('determineStatus').item.json.flags.length > 0 ? $('determineStatus').item.json.flags.join(', ') : 'None'),\n  } };"
+      },
+      "id": "google-sheets-append-id",
+      "name": "Google Sheets Append",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3220,
+        240
+      ],
+      "notes": "Demo mode: builds the row it would append; the rows are written to demo/out/ledger.csv.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $('determineStatus').item.json.status }}",
+              "value2": "AUTO_APPROVED"
+            }
+          ]
+        }
+      },
+      "id": "if-auto-approved-id",
+      "name": "IF Auto-Approved",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        3420,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the gmail node \"Success Notification\" in workflow.json.\nreturn { json: { sent: false, to: \"stakeholder@example.com\", subject: ('✅ Invoice processed — ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + ' · ' + ($('determineStatus').item.json.extracted_data?.currency || '$') + ($('determineStatus').item.json.extracted_data?.total || '0.00')), html: ('Invoice #' + ($('determineStatus').item.json.extracted_data?.invoice_number || 'N/A') + ' from ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + ' has been automatically extracted and approved.<br><br><b>Total:</b> ' + ($('determineStatus').item.json.extracted_data?.currency || '$') + ($('determineStatus').item.json.extracted_data?.total || '0.00') + '<br><b>Due Date:</b> ' + ($('determineStatus').item.json.extracted_data?.due_date || 'N/A') + '<br><br><a href=\"https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit\">View in Google Sheets</a>') } };"
+      },
+      "id": "success-notification-id",
+      "name": "Success Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3620,
+        180
+      ],
+      "settings": {
+        "onError": "continueRegularOutput"
+      },
+      "notes": "Demo mode: shows the email it would send; nothing is sent.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the gmail node \"Review Notification\" in workflow.json.\nreturn { json: { sent: false, to: \"stakeholder@example.com\", subject: ('⚠️ Invoice needs review — ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + ' · ' + ($('determineStatus').item.json.extracted_data?.currency || '$') + ($('determineStatus').item.json.extracted_data?.total || '0.00')), html: ('Invoice #' + ($('determineStatus').item.json.extracted_data?.invoice_number || 'N/A') + ' from ' + ($('determineStatus').item.json.extracted_data?.vendor_name || 'Unknown') + ' requires your attention.<br><br><b>Status:</b> <span style=\"color:' + ($('determineStatus').item.json.statusColor || '#EA4335') + ';font-weight:bold;\">' + $('determineStatus').item.json.status + '</span><br><br><b>Issues Found:</b><br>- Math Discrepancies: ' + ($('determineStatus').item.json.mathDiscrepancies && $('determineStatus').item.json.mathDiscrepancies.length > 0 ? $('determineStatus').item.json.mathDiscrepancies.join(', ') : 'None') + '<br>- Low Confidence Fields: ' + ($('determineStatus').item.json.lowConfidenceFields && $('determineStatus').item.json.lowConfidenceFields.length > 0 ? $('determineStatus').item.json.lowConfidenceFields.map(f => f.field + ' (' + f.confidence + '%)').join(', ') : 'None') + '<br>- Flags: ' + ($('determineStatus').item.json.flags && $('determineStatus').item.json.flags.length > 0 ? $('determineStatus').item.json.flags.join(', ') : 'None') + '<br><br><a href=\"https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit\">Review in Google Sheets</a>') } };"
+      },
+      "id": "review-notification-id",
+      "name": "Review Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3620,
+        300
+      ],
+      "settings": {
+        "onError": "continueRegularOutput"
+      },
+      "notes": "Demo mode: shows the email it would send; nothing is sent.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleDrive node \"Search Folder\" in workflow.json.\nreturn { json: { id: 'demo-folder', name: new Date().toISOString().substring(0, 7) } };"
+      },
+      "id": "search-folder-id",
+      "name": "Search Folder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3820,
+        240
+      ],
+      "settings": {
+        "onError": "continueRegularOutput",
+        "alwaysOutputData": true
+      },
+      "notes": "Demo mode: pretends this month’s folder exists in Google Drive.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.id }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "if-folder-exists-id",
+      "name": "IF Folder Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        4020,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleDrive node \"Create Folder\" in workflow.json.\nreturn { json: { id: 'demo-folder' } };"
+      },
+      "id": "create-folder-id",
+      "name": "Create Folder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4220,
+        300
+      ],
+      "settings": {
+        "onError": "continueRegularOutput"
+      },
+      "notes": "Demo mode: would create the month folder in Google Drive.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// The folder found or created for this invoice, plus the invoice's own file from\n// detectFileType (sheet nodes drop binary data). Replaces a Merge by position, which\n// paired folders with the wrong files once a duplicate or failure left the branch.\nconst source = $('detectFileType').item;\nreturn { json: { ...$json }, binary: source.binary };"
+      },
+      "id": "merge-folder-id-id",
+      "name": "Merge Folder ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4450,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $('detectFileType').item.json.origin }}",
+              "value2": "gmail"
+            }
+          ]
+        }
+      },
+      "id": "if-gmail-vs-drive-id",
+      "name": "IF Gmail vs Drive",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        4650,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleDrive node \"Move File\" in workflow.json.\nreturn { json: { filed: false, file: $('detectFileType').item.json.pdf_filename, folder: 'demo-folder' } };"
+      },
+      "id": "move-file-id",
+      "name": "Move File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4850,
+        300
+      ],
+      "settings": {
+        "onError": "continueRegularOutput"
+      },
+      "notes": "Demo mode: shows where the file would be filed in Google Drive.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleDrive node \"Upload Attachment\" in workflow.json.\nreturn { json: { filed: false, file: $('detectFileType').item.json.pdf_filename, folder: 'demo-folder' } };"
+      },
+      "id": "upload-attachment-id",
+      "name": "Upload Attachment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4850,
+        180
+      ],
+      "settings": {
+        "onError": "continueRegularOutput"
+      },
+      "notes": "Demo mode: shows where the file would be filed in Google Drive.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleSheets node \"Audit Log\" in workflow.json.\nreturn { json: {\n    \"Timestamp\": (new Date().toISOString()),\n    \"Filename\": ($('detectFileType').item.json.pdf_filename || 'N/A'),\n    \"Final Status\": ($('determineStatus').item.json.status),\n    \"Processing Duration\": (((Date.now() - new Date($('detectFileType').item.json.received_at).getTime()) / 1000).toFixed(2) + ' seconds'),\n    \"Tokens Used\": ($('Claude API Call').item.json.usage?.output_tokens ? ($('Claude API Call').item.json.usage.input_tokens + $('Claude API Call').item.json.usage.output_tokens) : 0),\n  } };"
+      },
+      "id": "audit-log-id",
+      "name": "Audit Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5100,
+        240
+      ],
+      "notes": "Demo mode: builds the row it would append; the rows are written to demo/out/audit-log.csv.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "id": "if-success-check-id",
+      "name": "IF Success Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2020,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the googleSheets node \"Error Log\" in workflow.json.\nreturn { json: {\n    \"Timestamp\": (new Date().toISOString()),\n    \"Source File\": ($('detectFileType').item.json.pdf_filename || 'N/A'),\n    \"Error Stage\": \"Claude API Extraction / Parsing\",\n    \"Error Message\": ($('Parse Claude Response').item.json.extracted_data?.raw_response || 'API Connection Failed'),\n  } };"
+      },
+      "id": "error-log-id",
+      "name": "Error Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        420
+      ],
+      "notes": "Demo mode: builds the row it would append; the rows are written to demo/out/error-log.csv.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// DEMO MODE: stands in for the gmail node \"Admin Alert Email\" in workflow.json.\nreturn { json: { sent: false, to: \"admin@example.com\", subject: ('🔥 CRITICAL PIPELINE ERROR — ' + ($('detectFileType').item.json.pdf_filename || 'Unknown File')), html: ('An invoice has failed extraction after all automatic retry attempts.<br><br><b>File:</b> ' + ($('detectFileType').item.json.pdf_filename || 'Unknown') + '<br><b>Stage:</b> Claude API Extraction / Parsing<br><b>Error Message:</b> ' + ($('Parse Claude Response').item.json.extracted_data?.raw_response || 'API Connection Failed')) } };"
+      },
+      "id": "admin-alert-email-id",
+      "name": "Admin Alert Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        420
+      ],
+      "notes": "Demo mode: shows the email it would send; nothing is sent.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "gmail-trigger-id",
+      "name": "Start demo",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        300
+      ],
+      "notes": "Demo mode: stands in for the Gmail and Google Drive triggers.",
+      "notesInFlow": true
+    },
+    {
+      "id": "demo-read-samples",
+      "name": "Read sample invoices",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        300
+      ],
+      "parameters": {
+        "fileSelector": "/demo/inbox/*.pdf",
+        "options": {}
+      },
+      "notes": "Demo mode: the sample PDFs in demo/inbox.",
+      "notesInFlow": true
+    },
+    {
+      "id": "demo-csv-ledger.csv",
+      "name": "ledger.csv (demo)",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        3220,
+        540
+      ],
+      "parameters": {
+        "operation": "csv",
+        "options": {
+          "fileName": "ledger.csv"
+        }
+      }
+    },
+    {
+      "id": "demo-write-ledger.csv",
+      "name": "Write ledger.csv",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        3440,
+        540
+      ],
+      "parameters": {
+        "operation": "write",
+        "fileName": "/demo/out/ledger.csv",
+        "options": {}
+      },
+      "notes": "Demo mode: demo/out/ledger.csv",
+      "notesInFlow": true
+    },
+    {
+      "id": "demo-csv-audit-log.csv",
+      "name": "audit-log.csv (demo)",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        5100,
+        420
+      ],
+      "parameters": {
+        "operation": "csv",
+        "options": {
+          "fileName": "audit-log.csv"
+        }
+      }
+    },
+    {
+      "id": "demo-write-audit-log.csv",
+      "name": "Write audit-log.csv",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        5320,
+        420
+      ],
+      "parameters": {
+        "operation": "write",
+        "fileName": "/demo/out/audit-log.csv",
+        "options": {}
+      },
+      "notes": "Demo mode: demo/out/audit-log.csv",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "detectFileType": {
+      "main": [
+        [
+          {
+            "node": "Switch Routing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Routing": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "binaryToBase64",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "validateFields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "IF PDF Text Length > 50",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF PDF Text Length > 50": {
+      "main": [
+        [
+          {
+            "node": "Prepare Claude Multimodal Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "binaryToBase64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "binaryToBase64": {
+      "main": [
+        [
+          {
+            "node": "Prepare Claude Multimodal Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Claude Multimodal Payload": {
+      "main": [
+        [
+          {
+            "node": "Claude API Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude API Call": {
+      "main": [
+        [
+          {
+            "node": "Parse Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Response": {
+      "main": [
+        [
+          {
+            "node": "validateMath",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validateMath": {
+      "main": [
+        [
+          {
+            "node": "validateFields",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Success Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validateFields": {
+      "main": [
+        [
+          {
+            "node": "classifyConfidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "classifyConfidence": {
+      "main": [
+        [
+          {
+            "node": "determineStatus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "determineStatus": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Is Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Google Sheets Append",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Alert": {
+      "main": [
+        [
+          {
+            "node": "Search Duplicate Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Duplicate Folder": {
+      "main": [
+        [
+          {
+            "node": "IF Dup Folder Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Dup Folder Exists": {
+      "main": [
+        [
+          {
+            "node": "Merge Dup Folder ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Dup Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Dup Folder": {
+      "main": [
+        [
+          {
+            "node": "Merge Dup Folder ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Dup Folder ID": {
+      "main": [
+        [
+          {
+            "node": "IF Gmail vs Drive (Dup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Gmail vs Drive (Dup)": {
+      "main": [
+        [
+          {
+            "node": "Upload Dup Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Move Dup File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets Append": {
+      "main": [
+        [
+          {
+            "node": "IF Auto-Approved",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Search Folder",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "ledger.csv (demo)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Auto-Approved": {
+      "main": [
+        [
+          {
+            "node": "Success Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Review Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Notification": {
+      "main": [
+        []
+      ]
+    },
+    "Review Notification": {
+      "main": [
+        []
+      ]
+    },
+    "Search Folder": {
+      "main": [
+        [
+          {
+            "node": "IF Folder Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Folder Exists": {
+      "main": [
+        [
+          {
+            "node": "Merge Folder ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Folder": {
+      "main": [
+        [
+          {
+            "node": "Merge Folder ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Folder ID": {
+      "main": [
+        [
+          {
+            "node": "IF Gmail vs Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Gmail vs Drive": {
+      "main": [
+        [
+          {
+            "node": "Upload Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Move File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Attachment": {
+      "main": [
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move File": {
+      "main": [
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Success Check": {
+      "main": [
+        [
+          {
+            "node": "Error Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Error Log": {
+      "main": [
+        [
+          {
+            "node": "Admin Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start demo": {
+      "main": [
+        [
+          {
+            "node": "Read sample invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read sample invoices": {
+      "main": [
+        [
+          {
+            "node": "detectFileType",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ledger.csv (demo)": {
+      "main": [
+        [
+          {
+            "node": "Write ledger.csv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit Log": {
+      "main": [
+        [
+          {
+            "node": "audit-log.csv (demo)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "audit-log.csv (demo)": {
+      "main": [
+        [
+          {
+            "node": "Write audit-log.csv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionTimeout": 60,
+    "executionOrder": "v1"
+  },
+  "id": "LedgerQuarryDemo",
+  "active": false
+}

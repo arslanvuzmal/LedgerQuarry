@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    name: Workflow logic tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Unit tests (Code nodes run from workflows/workflow.json)
+        run: node --test tests/*.test.mjs
+      - name: Demo workflow is up to date
+        run: node scripts/build-demo-workflow.mjs --check
+
+  demo:
+    name: Demo run in n8n
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Sample invoices
+        run: node demo/make-samples.mjs
+      - name: Start n8n with the demo workflow
+        run: |
+          mkdir -p demo/out && chmod -R a+rwX demo
+          docker compose -f docker-compose.demo.yml up -d
+          for i in $(seq 1 60); do curl -sf http://localhost:5678/healthz && break; sleep 2; done
+      - name: Run the workflow
+        run: docker compose -f docker-compose.demo.yml exec -T -e N8N_RUNNERS_BROKER_PORT=5681 n8n n8n execute --id LedgerQuarryDemo > /dev/null
+      - name: Check what it wrote
+        run: node demo/check-output.mjs
+      - name: n8n log on failure
+        if: failure()
+        run: docker compose -f docker-compose.demo.yml logs --tail 100

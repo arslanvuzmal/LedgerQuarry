@@ -1,0 +1,81 @@
+{
+  "_about": "Demo mode only. The real workflow sends each invoice to Claude; in demo mode the 'Claude API Call' node returns these answers instead. They were written by hand to match the sample PDFs in demo/inbox/, in the JSON shape the workflow's prompt asks for. They are not model output.",
+  "1-northwind-INV-1042.pdf": {
+    "invoice_number": { "value": "INV-1042", "confidence": 98 },
+    "invoice_date": { "value": "2026-10-02", "confidence": 97 },
+    "due_date": { "value": "2026-11-01", "confidence": 96 },
+    "vendor": {
+      "name": { "value": "Northwind Office Supplies Kft.", "confidence": 97 },
+      "address": { "value": "12 Mill Road, 1095 Budapest", "confidence": 92 },
+      "email": { "value": "billing@northwind.example", "confidence": 95 }
+    },
+    "client": { "name": { "value": "Lakeside Dental", "confidence": 94 } },
+    "line_items": [
+      { "description": { "value": "Copy paper, A4 (box)", "confidence": 95 }, "quantity": { "value": 10, "confidence": 97 }, "unit_price": { "value": 5.5, "confidence": 96 }, "line_total": { "value": 55.0, "confidence": 97 } },
+      { "description": { "value": "Toner cartridge", "confidence": 95 }, "quantity": { "value": 2, "confidence": 97 }, "unit_price": { "value": 42.5, "confidence": 96 }, "line_total": { "value": 85.0, "confidence": 97 } }
+    ],
+    "currency": { "value": "EUR", "confidence": 96 },
+    "subtotal": { "value": 140.0, "confidence": 97 },
+    "tax_amount": { "value": 37.8, "confidence": 96 },
+    "total": { "value": 177.8, "confidence": 98 },
+    "payment_terms": { "value": "30 days", "confidence": 93 }
+  },
+  "2-kovacs-print-2044.pdf": {
+    "invoice_number": { "value": "2044", "confidence": 96 },
+    "invoice_date": { "value": "2026-10-05", "confidence": 97 },
+    "due_date": { "value": "2026-10-20", "confidence": 96 },
+    "vendor": {
+      "name": { "value": "Kovacs Print Bt.", "confidence": 96 },
+      "address": { "value": "4 Csengery utca, 1067 Budapest", "confidence": 91 },
+      "email": { "value": "invoices@kovacsprint.example", "confidence": 95 }
+    },
+    "client": { "name": { "value": "Lakeside Dental", "confidence": 94 } },
+    "line_items": [
+      { "description": { "value": "Appointment cards", "confidence": 95 }, "quantity": { "value": 1000, "confidence": 96 }, "unit_price": { "value": 0.12, "confidence": 95 }, "line_total": { "value": 120.0, "confidence": 97 } },
+      { "description": { "value": "Window vinyl", "confidence": 95 }, "quantity": { "value": 1, "confidence": 97 }, "unit_price": { "value": 80.0, "confidence": 96 }, "line_total": { "value": 80.0, "confidence": 97 } }
+    ],
+    "currency": { "value": "EUR", "confidence": 96 },
+    "subtotal": { "value": 210.0, "confidence": 97 },
+    "tax_amount": { "value": 56.7, "confidence": 96 },
+    "total": { "value": 266.7, "confidence": 98 },
+    "payment_terms": { "value": "15 days", "confidence": 93 }
+  },
+  "3-harbour-CN-77.pdf": {
+    "invoice_number": { "value": "CN-77", "confidence": 96 },
+    "invoice_date": { "value": "2026-10-07", "confidence": 96 },
+    "due_date": { "value": null, "confidence": 100 },
+    "vendor": {
+      "name": { "value": "Harbour Medical Supply Ltd", "confidence": 96 },
+      "address": { "value": "9 Quay Street, Dublin 2", "confidence": 92 },
+      "email": { "value": "accounts@harbourmedical.example", "confidence": 95 }
+    },
+    "client": { "name": { "value": "Lakeside Dental", "confidence": 94 } },
+    "line_items": [
+      { "description": { "value": "Returned gloves, box", "confidence": 94 }, "quantity": { "value": -1, "confidence": 95 }, "unit_price": { "value": 42.5, "confidence": 95 }, "line_total": { "value": -42.5, "confidence": 96 } }
+    ],
+    "currency": { "value": "EUR", "confidence": 96 },
+    "subtotal": { "value": -42.5, "confidence": 96 },
+    "tax_amount": { "value": -11.48, "confidence": 95 },
+    "total": { "value": -53.98, "confidence": 97 },
+    "payment_terms": { "value": null, "confidence": 100 }
+  },
+  "4-northwind-INV-1001.pdf": {
+    "invoice_number": { "value": "INV-1001", "confidence": 98 },
+    "invoice_date": { "value": "2026-09-03", "confidence": 97 },
+    "due_date": { "value": "2026-10-03", "confidence": 96 },
+    "vendor": {
+      "name": { "value": "Northwind Office Supplies Kft.", "confidence": 97 },
+      "address": { "value": "12 Mill Road, 1095 Budapest", "confidence": 92 },
+      "email": { "value": "billing@northwind.example", "confidence": 95 }
+    },
+    "client": { "name": { "value": "Lakeside Dental", "confidence": 94 } },
+    "line_items": [
+      { "description": { "value": "Copy paper, A4 (box)", "confidence": 95 }, "quantity": { "value": 20, "confidence": 97 }, "unit_price": { "value": 5.5, "confidence": 96 }, "line_total": { "value": 110.0, "confidence": 97 } }
+    ],
+    "currency": { "value": "EUR", "confidence": 96 },
+    "subtotal": { "value": 110.0, "confidence": 97 },
+    "tax_amount": { "value": 29.7, "confidence": 96 },
+    "total": { "value": 139.7, "confidence": 98 },
+    "payment_terms": { "value": "30 days", "confidence": 93 }
+  }
+}
